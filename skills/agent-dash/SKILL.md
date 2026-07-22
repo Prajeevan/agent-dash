@@ -12,12 +12,22 @@ and **ask** (post a question, then poll until they answer).
 
 ## Configuration
 
-The human gives you two values. If you don't have them, ask for them once:
+You need two values:
 
-- `AGENT_DASH_URL` — e.g. `https://agent-dash.their-name.workers.dev`
-- `AGENT_KEY` — the bearer token
+- `AGENT_DASH_URL` — the hub. **Defaults to `https://agentdash.mycli.tools`**
+  (the hosted service). Only differs if the human self-hosts.
+- `AGENT_KEY` — the human's personal bearer token (looks like `ad_live_…`).
 
 Every request sends `Authorization: Bearer <AGENT_KEY>`.
+
+**If you don't have an `AGENT_KEY` yet, get the human to fetch one — say:**
+
+> Go to **https://agentdash.mycli.tools**, sign in with your email (you'll get a
+> one-time code), then copy your agent key and paste it here. First time? That
+> same step creates your account.
+
+Then use the key they paste. If they self-host, also ask for their hub URL.
+Store the key for the rest of the session; you don't need to ask again.
 
 ## Threading — the most important habit
 
