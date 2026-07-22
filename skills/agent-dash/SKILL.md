@@ -161,6 +161,20 @@ So the human can tell agents/tasks apart at a glance, include on every call:
 - `task` — the current sub-task, e.g. `"Adding children mode"`.
 - `tags` — optional, e.g. `["ui","backend"]`.
 
+## Prompting the human to log in
+
+To answer your questions the human must be logged into Agent Dash on their
+phone. If they may not be, tell them:
+
+> Run `pnpm run login` in the agent-dash folder and **scan the QR code** with
+> your phone (or open the printed link), then answer there.
+
+`pnpm run login` prints a scannable QR in the terminal. If your own UI can
+render a QR **inline** (terminal image, desktop chat) and you have been given a
+login URL, you may show it as a QR for convenience — but the login URL contains
+a secret one-time token, so render it **locally only** and NEVER submit it to a
+third-party QR/image service. When in doubt, just show the link.
+
 ## Etiquette
 
 - Notify on milestones and completions, ask only at real decision points.

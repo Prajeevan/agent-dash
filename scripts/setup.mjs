@@ -5,7 +5,7 @@
 //   pnpm setup
 //
 // Safe to re-run: pass --rotate to mint brand-new keys (invalidates old ones).
-import { randomKey, generateVapidKeys, mintLoginToken, loadSecrets, saveSecrets, putSecret, wrangler, readWorkerName } from './lib.mjs'
+import { randomKey, generateVapidKeys, mintLoginToken, loadSecrets, saveSecrets, putSecret, wrangler, readWorkerName, printLoginQr } from './lib.mjs'
 
 const rotate = process.argv.includes('--rotate')
 const existing = loadSecrets()
@@ -41,13 +41,19 @@ wrangler(['deploy'])
 const name = readWorkerName()
 console.log('\n────────────────────────────────────────────────────────')
 console.log('✅ Agent Dash is live.\n')
-console.log('Your worker URL is shown above (https://' + name + '.<your-subdomain>.workers.dev).')
-console.log('\n1. Open this magic link ON YOUR PHONE to log in (valid 15 min):')
-console.log('   <YOUR_URL>/login?t=' + mintLoginToken(secrets.APP_SECRET))
-console.log('   (run `pnpm run login` any time to mint a fresh link)\n')
-console.log('2. Add the app to your Home Screen, then enable notifications in Settings.\n')
-console.log('3. Give an agent this MCP config (or the curl snippet in Settings):')
-console.log('   {"mcpServers":{"agent-dash":{"url":"<YOUR_URL>/mcp",')
+const token = mintLoginToken(secrets.APP_SECRET)
+if (secrets.WORKER_URL) {
+  // We know the URL — show a scannable QR right here.
+  printLoginQr(`${secrets.WORKER_URL.replace(/\/$/, '')}/login?t=${token}`)
+} else {
+  console.log('Your worker URL is shown above (https://' + name + '.<your-subdomain>.workers.dev).')
+  console.log('Tip: add that URL as "WORKER_URL" to .agent-dash.local.json, then run')
+  console.log('`pnpm run login` for a scannable QR code.\n')
+  console.log('1. Open this magic link ON YOUR PHONE to log in (valid 15 min):')
+  console.log('   <YOUR_URL>/login?t=' + token)
+}
+console.log('Give an agent this MCP config (or the curl snippet in Settings):')
+console.log('   {"mcpServers":{"agent-dash":{"url":"' + (secrets.WORKER_URL || '<YOUR_URL>') + '/mcp",')
 console.log('     "headers":{"Authorization":"Bearer ' + secrets.AGENT_KEY + '"}}}}\n')
 console.log('   AGENT_KEY: ' + secrets.AGENT_KEY)
 console.log('────────────────────────────────────────────────────────')

@@ -60,6 +60,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.1
         version: 6.0.4(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0))
+      qrcode-terminal:
+        specifier: ^0.12.0
+        version: 0.12.0
       typescript:
         specifier: ^6.0.2
         version: 6.0.3
@@ -1300,6 +1303,10 @@ packages:
   prettier@3.9.6:
     resolution: {integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==}
     engines: {node: '>=14'}
+    hasBin: true
+
+  qrcode-terminal@0.12.0:
+    resolution: {integrity: sha512-EXtzRZmC+YGmGlDFbXKxQiMZNwCLEO6BANKXG4iCtSIM0yqc/pappSx3RIKr4r0uh5JsBckOXeKrB3Iz7mdQpQ==}
     hasBin: true
 
   react-dom@19.2.8:
@@ -2659,6 +2666,8 @@ snapshots:
       source-map-js: 1.2.1
 
   prettier@3.9.6: {}
+
+  qrcode-terminal@0.12.0: {}
 
   react-dom@19.2.8(react@19.2.8):
     dependencies:

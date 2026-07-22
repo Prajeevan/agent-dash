@@ -2,6 +2,7 @@
 import { generateKeyPairSync, randomBytes, createHmac } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import qrcode from 'qrcode-terminal'
 
 export const SECRETS_FILE = '.agent-dash.local.json'
 
@@ -64,4 +65,14 @@ export function readWorkerName() {
   const raw = readFileSync('wrangler.jsonc', 'utf8').replace(/\/\/.*$/gm, '')
   const m = raw.match(/"name"\s*:\s*"([^"]+)"/)
   return m ? m[1] : 'agent-dash'
+}
+
+// Print a scannable QR of a login URL to the terminal, then the URL as a
+// fallback. The URL holds a short-lived magic-link token — we render locally
+// and NEVER send it to a third-party QR service.
+export function printLoginQr(url) {
+  console.log('\nScan this with your phone to log in (or open the link below):\n')
+  qrcode.generate(url, { small: true }, (qr) => console.log(qr))
+  console.log(`  ${url}\n`)
+  console.log('  Valid 15 minutes. On the phone: Add to Home Screen, then enable notifications.\n')
 }
