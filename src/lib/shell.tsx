@@ -158,9 +158,9 @@ export function Landing() {
             </p>
           </div>
           <div style={cardStyle}>
-            <strong style={{ fontSize: '0.95rem' }}>🔌 Connect anything</strong>
+            <strong style={{ fontSize: '0.95rem' }}>🔌 One-line setup</strong>
             <p style={{ color: 'var(--muted)', fontSize: '0.88rem', lineHeight: 1.55, margin: '0.3rem 0 0' }}>
-              One-line MCP server, a portable skill, or a single curl. Sign in to get your key.
+              Add the skill with <code>npx skills add</code>, paste your key, done. Sign in to get yours.
             </p>
           </div>
         </div>

@@ -105,8 +105,6 @@ function LoginPage() {
     }
   }
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
-
   return (
     <div style={{ minHeight: '100svh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
       <div style={{ maxWidth: '25rem', width: '100%' }}>
@@ -177,17 +175,17 @@ function LoginPage() {
             >
               {copied === 'key' ? 'Copied ✓' : 'Copy key'}
             </button>
-            <div style={{ marginTop: '1.5rem' }}>
+            <div style={{ marginTop: '1.5rem', textAlign: 'left' }}>
               <p style={{ color: 'var(--muted)', fontSize: '0.85rem', margin: '0 0 0.4rem' }}>
-                Connect your agent — paste this into your terminal:
+                <strong style={{ color: 'var(--text)' }}>Step 1.</strong> Add Agent Dash to your agent:
               </p>
               <div style={{ position: 'relative' }}>
                 <code style={{ ...codeBox, fontSize: '0.78rem', paddingRight: '4.5rem' }}>
-                  npx agentdash login --url {origin} --key {agentKey}
+                  npx skills add Prajeevan/agent-dash
                 </code>
                 <button
                   type="button"
-                  onClick={() => copy('cmd', `npx agentdash login --url ${origin} --key ${agentKey}`)}
+                  onClick={() => copy('cmd', 'npx skills add Prajeevan/agent-dash')}
                   style={{
                     position: 'absolute', top: '0.4rem', right: '0.4rem',
                     background: 'var(--bg-elev)', border: '1px solid var(--border)',
@@ -198,6 +196,10 @@ function LoginPage() {
                   {copied === 'cmd' ? 'Copied ✓' : 'Copy'}
                 </button>
               </div>
+              <p style={{ color: 'var(--muted)', fontSize: '0.85rem', margin: '0.8rem 0 0' }}>
+                <strong style={{ color: 'var(--text)' }}>Step 2.</strong> When your agent asks, paste the
+                key above. That's it — it'll start reporting here.
+              </p>
             </div>
             <button
               type="button"

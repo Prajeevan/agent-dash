@@ -161,21 +161,12 @@ function SettingsPage() {
         </Card>
 
         <Card title="Connect an agent">
-          <p style={{ color: 'var(--muted)', fontSize: '0.9rem', lineHeight: 1.6, margin: '0 0 0.8rem' }}>
-            MCP clients (Claude Code, Cursor, Codex) — add this server. Use your <code>AGENT_KEY</code>.
+          <p style={{ color: 'var(--muted)', fontSize: '0.9rem', lineHeight: 1.6, margin: '0 0 0.5rem' }}>
+            Add the skill to your agent, then paste your key when it asks:
           </p>
-          <Snippet
-            text={`{
-  "mcpServers": {
-    "agent-dash": {
-      "url": "${origin}/mcp",
-      "headers": { "Authorization": "Bearer YOUR_AGENT_KEY" }
-    }
-  }
-}`}
-          />
+          <Snippet text={`npx skills add Prajeevan/agent-dash`} />
           <p style={{ color: 'var(--muted)', fontSize: '0.9rem', lineHeight: 1.6, margin: '1rem 0 0.5rem' }}>
-            Any agent (or a raw chat) — one curl to push an update:
+            Prefer raw HTTP? Any agent can push an update with one curl:
           </p>
           <Snippet
             text={`curl -X POST ${origin}/api/v1/events \\
