@@ -1,6 +1,6 @@
 import type { Env } from './env'
 import { json } from './util'
-import { createEvent, updateEvent, createQuestion, getQuestion } from './api'
+import { createEvent, updateEvent, createQuestion, getQuestion, clearEvents } from './api'
 
 // ── Stateless MCP over Streamable HTTP ───────────────────────────────────────
 // A plain JSON-RPC POST handler — NOT Cloudflare's McpAgent (which is a Durable
@@ -73,6 +73,18 @@ const TOOLS = [
     },
   },
   {
+    name: 'clear',
+    description:
+      "Tidy the human's inbox when it's getting cluttered. scope 'read' (the safe default) removes only items they've already seen or answered, keeping anything unread or awaiting an answer. scope 'all' wipes everything — only use 'all' when the human explicitly asked to restart. Optionally limit to one project.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        scope: { type: 'string', description: "'read' (default, safe) or 'all' (full reset)." },
+        project: { type: 'string', description: 'Only clear this project.' },
+      },
+    },
+  },
+  {
     name: 'wait_for_answer',
     description:
       'Check whether the human answered a question. Returns { status: "pending" | "answered" | "expired", answer }. While status is "pending", wait ~10 seconds and call again. When "answered", answer holds the values keyed by each block id. When "expired", proceed with a sensible default.',
@@ -111,6 +123,11 @@ async function callTool(name: string, args: Record<string, unknown>, env: Env): 
   if (name === 'wait_for_answer') {
     const id = String(args.question_id ?? '')
     const res = await getQuestion(id, env)
+    return res.json()
+  }
+  if (name === 'clear') {
+    const scope = args.scope === 'all' ? 'all' : 'read'
+    const res = await clearEvents(env, scope, typeof args.project === 'string' ? args.project : undefined)
     return res.json()
   }
   throw new Error(`Unknown tool: ${name}`)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createFileRoute, Link, useParams } from '@tanstack/react-router'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Circle } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
 import { api, AuthError, timeAgo, type EventItem } from '../lib/api'
 import { Header, Container, LockedScreen, Spinner, Badge } from '../lib/shell'
 import { BlockRenderer, AnswerForm } from '../lib/blocks'
@@ -12,6 +13,7 @@ export const Route = createFileRoute('/event/$id')({
 
 function EventDetail() {
   const { id } = useParams({ from: '/event/$id' })
+  const navigate = useNavigate()
   const [event, setEvent] = useState<EventItem | null>(null)
   const [state, setState] = useState<'loading' | 'ok' | 'locked' | 'notfound'>('loading')
   const [submitting, setSubmitting] = useState(false)
@@ -82,9 +84,18 @@ function EventDetail() {
     <>
       <Header
         right={
-          <Link to="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
-            <ArrowLeft size={16} /> Inbox
-          </Link>
+          <>
+            <button
+              onClick={() => api.markUnread(id).then(() => navigate({ to: '/' }))}
+              title="Mark unread"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: 'var(--bg-elev2)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.4rem 0.6rem', color: 'var(--muted)', cursor: 'pointer', fontSize: '0.82rem' }}
+            >
+              <Circle size={13} /> Unread
+            </button>
+            <Link to="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
+              <ArrowLeft size={16} /> Inbox
+            </Link>
+          </>
         }
       />
       <Container>

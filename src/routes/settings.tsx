@@ -184,6 +184,13 @@ function SettingsPage() {
           </p>
         </Card>
 
+        <Card title="Clear inbox">
+          <p style={{ color: 'var(--muted)', fontSize: '0.9rem', lineHeight: 1.6, margin: '0 0 1rem' }}>
+            Tidy up or start fresh. Agents can also clear things themselves when it gets cluttered.
+          </p>
+          <ClearButtons />
+        </Card>
+
         <Card title="Session">
           <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
             <button onClick={() => api.logout().then(() => navigate({ to: '/' }))} style={btn(false)}>
@@ -215,6 +222,48 @@ function TimeField({ label, minutes, onChange }: { label: string; minutes: numbe
         style={{ background: 'var(--bg-elev2)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem', color: 'var(--text)' }}
       />
     </label>
+  )
+}
+
+function ClearButtons() {
+  const [confirming, setConfirming] = useState<null | 'read' | 'all'>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  async function run(scope: 'read' | 'all') {
+    setConfirming(null)
+    const res = await api.clear(scope).catch(() => null)
+    setMsg(res ? `Cleared ${res.cleared} item${res.cleared === 1 ? '' : 's'}.` : 'Could not clear.')
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+        <button onClick={() => setConfirming('read')} style={btn(false)}>
+          Clear read &amp; answered
+        </button>
+        <button onClick={() => setConfirming('all')} style={{ ...btn(false), color: 'var(--error)', borderColor: 'var(--error)' }}>
+          Restart — clear everything
+        </button>
+      </div>
+      {confirming ? (
+        <div style={{ marginTop: '0.9rem', padding: '0.8rem', border: '1px solid var(--error)', borderRadius: '0.6rem', background: 'color-mix(in srgb, var(--error) 8%, transparent)' }}>
+          <p style={{ margin: '0 0 0.7rem', fontSize: '0.9rem' }}>
+            {confirming === 'all'
+              ? 'Delete ALL messages, including unanswered questions? This cannot be undone.'
+              : 'Delete everything you have already read or answered?'}
+          </p>
+          <div style={{ display: 'flex', gap: '0.6rem' }}>
+            <button onClick={() => run(confirming)} style={{ ...btn(true), background: 'var(--error)' }}>
+              Yes, clear
+            </button>
+            <button onClick={() => setConfirming(null)} style={btn(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {msg ? <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginTop: '0.8rem' }}>{msg}</p> : null}
+    </div>
   )
 }
 

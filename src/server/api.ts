@@ -414,6 +414,42 @@ export async function markAllRead(env: Env): Promise<Response> {
   return json({ ok: true })
 }
 
+// Bring an item back to the top by marking it unread again.
+export async function markUnread(id: string, env: Env): Promise<Response> {
+  await env.DB.prepare('UPDATE events SET read_at = NULL WHERE id = ?1').bind(id).run()
+  return json({ ok: true })
+}
+
+// Clear the inbox. scope:
+//   'read'    — only items already seen/answered (safe default; keeps unread + pending)
+//   'all'     — everything, including unanswered questions (a full restart)
+// Optionally scoped to a single project.
+export async function clearEvents(
+  env: Env,
+  scope: 'read' | 'all',
+  project?: string | null,
+): Promise<Response> {
+  const projFilter = project != null ? `COALESCE(project, '') = ?1` : null
+  const bind = project != null ? [project] : []
+
+  let where: string
+  if (scope === 'all') {
+    where = projFilter ?? '1=1'
+  } else {
+    where = projFilter ? `read_at IS NOT NULL AND ${projFilter}` : 'read_at IS NOT NULL'
+  }
+
+  const countRow = await env.DB.prepare(`SELECT COUNT(*) AS n FROM events WHERE ${where}`)
+    .bind(...bind)
+    .first<{ n: number }>()
+
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM questions WHERE event_id IN (SELECT id FROM events WHERE ${where})`).bind(...bind),
+    env.DB.prepare(`DELETE FROM events WHERE ${where}`).bind(...bind),
+  ])
+  return json({ ok: true, cleared: countRow?.n ?? 0 })
+}
+
 // You answer a question in the UI. Validate the answer against the question's
 // own interactive blocks so a stale/garbage submit can't land.
 export async function answerQuestion(id: string, request: Request, env: Env): Promise<Response> {

@@ -21,6 +21,8 @@ import {
   getEvent,
   markRead,
   markAllRead,
+  markUnread,
+  clearEvents,
   answerQuestion,
   subscribePush,
   unsubscribePush,
@@ -71,6 +73,17 @@ export default {
 
     // ── Agent API (bearer AGENT_KEY) ──
     if (path.startsWith('/api/v1/')) {
+      // Clear the inbox — usable by YOU (session) or an AGENT (bearer) that
+      // decides there's too much to keep. Default scope 'read' is safe.
+      if (path === '/api/v1/clear' && method === 'POST') {
+        if (!(isAgentAuthed(request, env) || (await isLoggedIn(request, env)))) {
+          return withCors(unauthorized())
+        }
+        const body = (await request.json().catch(() => ({}))) as { scope?: string; project?: string }
+        const scope = body.scope === 'all' ? 'all' : 'read'
+        return withCors(await clearEvents(env, scope, typeof body.project === 'string' ? body.project : undefined))
+      }
+
       const eventUpdate = path.match(/^\/api\/v1\/events\/([^/]+)$/)
       const agentRoute =
         (path === '/api/v1/events' && method === 'POST') ||
@@ -106,6 +119,9 @@ export default {
 
       const readMatch = path.match(/^\/api\/v1\/event\/([^/]+)\/read$/)
       if (readMatch && method === 'POST') return markRead(readMatch[1], env)
+
+      const unreadMatch = path.match(/^\/api\/v1\/event\/([^/]+)\/unread$/)
+      if (unreadMatch && method === 'POST') return markUnread(unreadMatch[1], env)
 
       const answerMatch = path.match(/^\/api\/v1\/questions\/([^/]+)\/answer$/)
       if (answerMatch && method === 'POST') return answerQuestion(answerMatch[1], request, env)

@@ -115,6 +115,30 @@ Display (any event): `markdown`, `progress`, `keyvalue`, `table`, `link`,
 Full machine-readable schema with examples: `GET $AGENT_DASH_URL/api/v1/schema.json`
 (no auth needed). Fetch it if you need exact field shapes.
 
+## Keeping the inbox tidy
+
+If you've posted a lot of progress noise and it's getting cluttered, you can
+clear items you've already delivered:
+
+```bash
+curl -X POST "$AGENT_DASH_URL/api/v1/clear" \
+  -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \
+  -d '{"scope":"read"}'          # removes only what the human has already seen/answered
+```
+
+- `scope: "read"` is safe — it never removes unread items or unanswered questions.
+- `scope: "all"` wipes everything (a full restart) — only do this if the human asked.
+- Add `"project": "Weather app"` to limit clearing to one project.
+
+## Attribution — always include these
+
+So the human can tell agents/tasks apart at a glance, include on every call:
+
+- `project` — what you're working on, e.g. `"Weather app"`.
+- `model` — which model you are, e.g. `"claude-opus-4.8"`, `"gpt-5"`.
+- `task` — the current sub-task, e.g. `"Adding children mode"`.
+- `tags` — optional, e.g. `["ui","backend"]`.
+
 ## Etiquette
 
 - Notify on milestones and completions, ask only at real decision points.

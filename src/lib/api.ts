@@ -56,7 +56,14 @@ export const api = {
   projects: () => req<{ ok: boolean; projects: ProjectRow[] }>('/api/v1/projects'),
   stats: () => req<{ ok: boolean; unread: number; pending_questions: number }>('/api/v1/stats'),
   markRead: (id: string) => req(`/api/v1/event/${id}/read`, { method: 'POST' }),
+  markUnread: (id: string) => req(`/api/v1/event/${id}/unread`, { method: 'POST' }),
   markAllRead: () => req('/api/v1/read-all', { method: 'POST' }),
+  // project null/undefined = all projects; '' = the "No project" bucket.
+  clear: (scope: 'read' | 'all', project?: string | null) =>
+    req<{ ok: boolean; cleared: number }>('/api/v1/clear', {
+      method: 'POST',
+      body: JSON.stringify({ scope, ...(project != null ? { project } : {}) }),
+    }),
   answer: (id: string, answer: Record<string, unknown>) =>
     req<{ ok: boolean; error?: string }>(`/api/v1/questions/${id}/answer`, {
       method: 'POST',
