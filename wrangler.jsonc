@@ -1,0 +1,29 @@
+{
+  // Forking? Replace account_id + the database_id/id below with your own
+  // (from `wrangler d1 create agent-dash` and `wrangler kv namespace create SESSIONS`),
+  // or just run `pnpm setup` which walks you through it.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agent-dash",
+  "account_id": "1a204f95e8c55231529cafa260756738",
+  "compatibility_date": "2025-09-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/worker.ts",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "agent-dash",
+      "database_id": "ad92afb5-6abc-460d-aede-c3f6d5af9615"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SESSIONS",
+      "id": "db48529daf584e6cb422c1583bd85a46"
+    }
+  ]
+}

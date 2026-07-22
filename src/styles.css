@@ -1,0 +1,117 @@
+@import 'tailwindcss';
+
+:root {
+  --bg: #0a0a0f;
+  --bg-elev: #12121a;
+  --bg-elev2: #1a1a26;
+  --border: #26263a;
+  --text: #e9e9f2;
+  --muted: #9a9ab0;
+  --accent: #7c5cff;
+  --accent-soft: #2a2150;
+  --info: #5c9cff;
+  --success: #3fd08a;
+  --warn: #ffcc55;
+  --error: #ff6b7a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100svh;
+}
+
+/* Respect iOS safe areas when installed to the home screen. */
+.safe-top {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+a {
+  color: var(--accent);
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-in {
+  animation: slide-in 0.22s ease-out both;
+}
+
+/* Markdown block rendering */
+.md h1,
+.md h2,
+.md h3 {
+  font-weight: 650;
+  line-height: 1.25;
+  margin: 0.6em 0 0.3em;
+}
+.md h1 {
+  font-size: 1.25rem;
+}
+.md h2 {
+  font-size: 1.1rem;
+}
+.md h3 {
+  font-size: 1rem;
+}
+.md p {
+  margin: 0.4em 0;
+  line-height: 1.6;
+}
+.md ul,
+.md ol {
+  margin: 0.4em 0;
+  padding-left: 1.2em;
+}
+.md li {
+  margin: 0.15em 0;
+}
+.md code {
+  background: var(--bg-elev2);
+  padding: 0.1em 0.35em;
+  border-radius: 0.3rem;
+  font-size: 0.85em;
+}
+.md a {
+  text-decoration: underline;
+}
+.md strong {
+  font-weight: 650;
+  color: #fff;
+}

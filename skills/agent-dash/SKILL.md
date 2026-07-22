@@ -1,0 +1,123 @@
+---
+name: agent-dash
+description: >
+  Reach the human through Agent Dash — a personal push inbox. Use it to send
+  progress updates that land as phone notifications, and to ask a question and
+  WAIT for the answer before continuing. Trigger whenever you hit a milestone
+  worth reporting, finish a long task, hit an error the human should see, or
+  reach a decision point where you genuinely need the human to choose before you
+  proceed (which option, approve/reject, fill in details).
+---
+
+# Agent Dash
+
+Agent Dash is the human's personal notification hub. You talk to it over plain
+HTTP with a bearer token. Two things you can do: **notify** (fire-and-forget)
+and **ask** (post a question, then poll until they answer).
+
+## Configuration
+
+The human gives you two values. If you don't have them, ask for them once:
+
+- `AGENT_DASH_URL` — e.g. `https://agent-dash.their-name.workers.dev`
+- `AGENT_KEY` — the bearer token
+
+Every request sends `Authorization: Bearer <AGENT_KEY>`.
+
+## 1. Send an update (notification)
+
+```bash
+curl -X POST "$AGENT_DASH_URL/api/v1/events" \
+  -H "Authorization: Bearer $AGENT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent": "claude-code",
+    "task_id": "landing-redesign",
+    "title": "Finished the competitive research",
+    "priority": 1,
+    "blocks": [
+      { "type": "markdown", "text": "## Found 14 competitors\nPricing ranges **$9–$99/mo**." },
+      { "type": "progress", "label": "Sources reviewed", "value": 14, "max": 14 }
+    ]
+  }'
+```
+
+- `priority`: `0` silent (shows in app, no push), `1` push, `2` urgent (rings through quiet hours). Default `0`.
+- `task_id`: reuse the same string across a run so related updates thread together.
+- `kind` is `update` here. Use `"kind":"done"` for a final success, `"kind":"error"` for a failure.
+
+**When to notify:** milestones, not every step. Good: "Scraped all sources",
+"Deploy succeeded", "Tests failing — see log". Bad: narrating each file you read.
+
+## 2. Ask a question and wait for the answer
+
+Post a question with an **interactive block** (`buttons` for a choice, `form`
+to collect fields). You get back an `id`. Then poll that id until it's answered.
+
+### Post the question
+
+```bash
+curl -X POST "$AGENT_DASH_URL/api/v1/questions" \
+  -H "Authorization: Bearer $AGENT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent": "claude-code",
+    "title": "Which audience should the deck target?",
+    "timeout_minutes": 120,
+    "blocks": [
+      { "type": "markdown", "text": "Research is done. Pick the framing and I'll draft it." },
+      { "type": "form", "id": "deck", "submitLabel": "Build it", "fields": [
+        { "id": "audience", "kind": "select", "label": "Audience", "options": ["VC", "Customer", "Internal"] },
+        { "id": "tone", "kind": "radio", "label": "Tone", "options": ["Formal", "Punchy"] },
+        { "id": "notes", "kind": "textarea", "label": "Anything to emphasize?" }
+      ]}
+    ]
+  }'
+# → { "ok": true, "id": "01J...", "poll_url": "/api/v1/questions/01J...", "timeout_at": 1699... }
+```
+
+Or a simple choice:
+
+```json
+"blocks": [
+  { "type": "markdown", "text": "About to deploy to production. Go?" },
+  { "type": "buttons", "id": "confirm", "options": ["Deploy", "Cancel"] }
+]
+```
+
+### Poll for the answer
+
+```bash
+curl "$AGENT_DASH_URL/api/v1/questions/01J..." \
+  -H "Authorization: Bearer $AGENT_KEY"
+# pending:  { "ok": true, "status": "pending",  "answer": null }
+# answered: { "ok": true, "status": "answered", "answer": { "deck": { "audience": "VC", "tone": "Punchy", "notes": "Lead with traction" } } }
+# expired:  { "ok": true, "status": "expired" }
+```
+
+**Polling loop — do exactly this:**
+
+1. Poll the id.
+2. If `status` is `pending`, wait ~10 seconds and poll again. After the first
+   5 minutes, back off to every ~30 seconds to be kind to the free tier.
+3. If `status` is `answered`, read `answer` (keyed by each block `id`) and continue your work using those values.
+4. If `status` is `expired`, the human didn't respond in time — proceed with a sensible default and mention that you did.
+
+The `answer` object is keyed by block id. A `buttons` block answers with the
+chosen string (`{ "confirm": "Deploy" }`); a `form` block answers with an object
+of `{ fieldId: value }`.
+
+## Blocks reference
+
+Display (any event): `markdown`, `progress`, `keyvalue`, `table`, `link`,
+`image`, `code`, `callout`. Interactive (questions only): `buttons`, `form`.
+
+Full machine-readable schema with examples: `GET $AGENT_DASH_URL/api/v1/schema.json`
+(no auth needed). Fetch it if you need exact field shapes.
+
+## Etiquette
+
+- Notify on milestones and completions, ask only at real decision points.
+- Set `priority: 2` only for things that should interrupt the human.
+- Reuse one `task_id` per run so the human sees a clean thread, not noise.
+- Don't block forever: always pass a `timeout_minutes` on questions and handle `expired`.

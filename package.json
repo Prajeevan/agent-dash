@@ -1,0 +1,43 @@
+{
+  "name": "agent-dash",
+  "version": "0.1.0",
+  "description": "Self-hosted push + ask-and-wait inbox for AI agents. Deploy your own on Cloudflare's free plan.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite dev --port 3000",
+    "generate-routes": "tsr generate",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "pnpm run build && wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply agent-dash --remote",
+    "db:migrate:local": "wrangler d1 migrations apply agent-dash --local",
+    "setup": "node scripts/setup.mjs",
+    "login": "node scripts/login.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cloudflare/vite-plugin": "^1.26.0",
+    "@tailwindcss/vite": "^4.1.18",
+    "@tanstack/react-router": "^1.132.0",
+    "@tanstack/react-router-ssr-query": "^1.132.0",
+    "@tanstack/react-start": "^1.132.0",
+    "@tanstack/router-plugin": "^1.132.0",
+    "lucide-react": "^0.545.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tailwindcss": "^4.1.18",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260722.1",
+    "@tanstack/router-cli": "^1.132.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "wrangler": "^4.70.0"
+  }
+}

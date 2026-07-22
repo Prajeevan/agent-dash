@@ -1,0 +1,37 @@
+{
+  "//": "Drop these hooks into your Claude Code settings.json (or .claude/settings.json).",
+  "//1": "First: chmod +x notify.sh, and export AGENT_DASH_URL and AGENT_KEY in your shell.",
+  "//2": "Adjust the path to notify.sh to wherever you put it.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/agent-dash/examples/claude-code-hooks/notify.sh 'Session started' 0 update"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/agent-dash/examples/claude-code-hooks/notify.sh 'Claude finished — ready for you' 1 done"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/agent-dash/examples/claude-code-hooks/notify.sh 'Claude needs your input' 2 update"
+          }
+        ]
+      }
+    ]
+  }
+}
