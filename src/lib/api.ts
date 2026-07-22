@@ -14,10 +14,21 @@ export interface EventItem {
   title: string
   blocks: unknown[]
   priority: number
+  project: string | null
+  task: string | null
+  model: string | null
+  tags: string[]
   created_at: number
   updated_at: number
   read_at: number | null
   question: QuestionState | null
+}
+
+export interface ProjectRow {
+  project: string // '' means "no project"
+  total: number
+  unread: number
+  pending: number
 }
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
@@ -42,6 +53,7 @@ export const api = {
       `/api/v1/feed${sinceTs ? `?since_ts=${sinceTs}` : ''}`,
     ),
   event: (id: string) => req<{ ok: boolean; event: EventItem }>(`/api/v1/event/${id}`),
+  projects: () => req<{ ok: boolean; projects: ProjectRow[] }>('/api/v1/projects'),
   stats: () => req<{ ok: boolean; unread: number; pending_questions: number }>('/api/v1/stats'),
   markRead: (id: string) => req(`/api/v1/event/${id}/read`, { method: 'POST' }),
   markAllRead: () => req('/api/v1/read-all', { method: 'POST' }),

@@ -14,15 +14,19 @@ const TOOLS = [
   {
     name: 'notify',
     description:
-      'Push an update to the human. Use for milestones, not every step (e.g. "Finished scraping 14 sources", "Deploy succeeded"). Set priority 2 for anything that should ring through quiet hours. blocks is an optional array of display blocks (markdown, progress, keyvalue, table, link, code, callout).',
+      'Push an update to the human. Use for milestones, not every step. ALWAYS include project (what you are working on) and model (which LLM you are) so the human can tell things apart at a glance. Set priority 2 for anything that should ring through quiet hours.',
     inputSchema: {
       type: 'object',
       properties: {
-        title: { type: 'string', description: 'Short headline shown in the notification.' },
+        title: { type: 'string', description: 'Short headline / the message itself.' },
+        project: { type: 'string', description: 'Project name, e.g. "Weather app". Used to group and filter.' },
+        task: { type: 'string', description: 'Current task, e.g. "Adding children mode".' },
+        model: { type: 'string', description: 'Which model you are, e.g. "claude-opus-4.8", "gpt-5".' },
+        tags: { type: 'array', description: 'Optional freeform tags, e.g. ["backend","urgent"].' },
         blocks: { type: 'array', description: 'Optional display blocks. See /api/v1/schema.json.' },
         priority: { type: 'number', description: '0 info, 1 notify, 2 urgent. Default 0.' },
-        task_id: { type: 'string', description: 'Group related updates into one thread.' },
-        agent: { type: 'string', description: 'Label for who is sending (e.g. "claude-code").' },
+        task_id: { type: 'string', description: 'Stable key to group updates into one thread / update in place.' },
+        agent: { type: 'string', description: 'The tool/client you run in (e.g. "claude-code", "cursor").' },
       },
       required: ['title'],
     },
@@ -47,11 +51,15 @@ const TOOLS = [
   {
     name: 'ask',
     description:
-      'Ask the human a question and get an id to poll. Provide at least one interactive block: a "buttons" block for a choice, or a "form" block to collect fields. Returns { id }. Then call wait_for_answer with that id.',
+      'Ask the human a question and get an id to poll. Provide at least one interactive block: a "buttons" block for a choice, or a "form" block to collect fields. Include project/task/model so the card reads "Project: X · model · Current task: Y". Returns { id }. Then call wait_for_answer with that id.',
     inputSchema: {
       type: 'object',
       properties: {
-        title: { type: 'string' },
+        title: { type: 'string', description: 'The question, e.g. "Which color scheme?"' },
+        project: { type: 'string', description: 'Project name, e.g. "Weather app".' },
+        task: { type: 'string', description: 'Current task, e.g. "Adding children mode".' },
+        model: { type: 'string', description: 'Which model you are.' },
+        tags: { type: 'array', description: 'Optional freeform tags.' },
         blocks: {
           type: 'array',
           description:

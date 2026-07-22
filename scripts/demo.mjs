@@ -23,7 +23,11 @@ const get = (path) => fetch(`${URL}${path}`, { headers: H }).then((r) => r.json(
 async function progress() {
   console.log('Creating a progress card…')
   const { id } = await post('/api/v1/events', {
-    agent: 'news-bot',
+    agent: 'claude-code',
+    model: 'claude-opus-4.8',
+    project: 'News Digest',
+    task: 'Scanning sources',
+    tags: ['research'],
     task_id: 'ai-news-scan',
     title: 'Scanning AI news',
     blocks: [
@@ -45,6 +49,7 @@ async function progress() {
     const done = value === 100
     await post(`/api/v1/events/${id}`, {
       title: done ? 'AI news scan complete' : 'Scanning AI news',
+      task: done ? 'Done' : 'Scanning sources',
       kind: done ? 'done' : 'update',
       notify: done, // only buzz on completion
       blocks: [
@@ -66,7 +71,11 @@ async function progress() {
 async function weather() {
   console.log('Asking you for a city…')
   const q = await post('/api/v1/questions', {
-    agent: 'weather-bot',
+    agent: 'claude-code',
+    model: 'gpt-5',
+    project: 'Weather app',
+    task: 'Fetching conditions',
+    tags: ['weather'],
     title: 'Which city do you want the weather for?',
     timeout_minutes: 30,
     blocks: [
@@ -104,7 +113,11 @@ async function weather() {
   const codes = { 0: 'Clear', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 61: 'Rain', 63: 'Rain', 65: 'Heavy rain', 71: 'Snow', 80: 'Showers', 95: 'Thunderstorm' }
 
   await post('/api/v1/events', {
-    agent: 'weather-bot',
+    agent: 'claude-code',
+    model: 'gpt-5',
+    project: 'Weather app',
+    task: 'Fetching conditions',
+    tags: ['weather'],
     priority: 1,
     task_id: 'weather',
     title: `Weather in ${place.name}, ${place.country_code}`,
@@ -121,7 +134,36 @@ async function weather() {
   console.log(`Sent weather for ${place.name}: ${Math.round(c.temperature_2m)}°C`)
 }
 
+// Mirrors the "Project: Weather app · Current task: Adding children mode ·
+// Please choose a color scheme" example. Posts the question and waits.
+async function colors() {
+  console.log('Posting a color-scheme choice…')
+  const q = await post('/api/v1/questions', {
+    agent: 'claude-code',
+    model: 'claude-opus-4.8',
+    project: 'Weather app',
+    task: 'Adding children mode',
+    tags: ['ui', 'design'],
+    title: 'Please choose which color scheme for children mode',
+    timeout_minutes: 60,
+    blocks: [
+      { type: 'markdown', text: 'Building the kids view. Which palette feels right?' },
+      { type: 'buttons', id: 'scheme', options: ['Sunshine (yellow/orange)', 'Ocean (blue/teal)', 'Candy (pink/purple)'] },
+    ],
+  })
+  console.log('Answer it on your phone →', `${URL}/event/${q.id}`)
+  for (let i = 0; i < 60; i++) {
+    const r = await get(`/api/v1/questions/${q.id}`)
+    if (r.status === 'answered') { console.log('You chose:', r.answer.scheme); return }
+    if (r.status === 'expired') { console.log('Expired.'); return }
+    process.stdout.write('.')
+    await sleep(10_000)
+  }
+  console.log('\nStill waiting.')
+}
+
 const cmd = process.argv[2]
 if (cmd === 'progress') await progress()
 else if (cmd === 'weather') await weather()
-else console.log('Usage: node scripts/demo.mjs [progress|weather]')
+else if (cmd === 'colors') await colors()
+else console.log('Usage: node scripts/demo.mjs [progress|weather|colors]')

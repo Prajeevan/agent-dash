@@ -27,6 +27,7 @@ import {
   getSettings,
   putSettings,
   getStats,
+  getProjects,
 } from './server/api'
 import { handleMcp } from './server/mcp'
 import { blockSchemaDoc, openApiDoc } from './server/docs'
@@ -92,6 +93,7 @@ export default {
       if (!(await isLoggedIn(request, env))) return unauthorized()
 
       if (path === '/api/v1/feed' && method === 'GET') return getFeed(url, env)
+      if (path === '/api/v1/projects' && method === 'GET') return getProjects(env)
       if (path === '/api/v1/stats' && method === 'GET') return getStats(env)
       if (path === '/api/v1/settings' && method === 'GET') return getSettings(env)
       if (path === '/api/v1/settings' && method === 'POST') return putSettings(request, env)

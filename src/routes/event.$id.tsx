@@ -88,12 +88,38 @@ function EventDetail() {
         }
       />
       <Container>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+          {event.project ? (
+            <span style={{ fontSize: '0.75rem', fontWeight: 650, color: 'var(--accent)', background: 'var(--accent-soft)', padding: '0.15rem 0.55rem', borderRadius: '999px' }}>
+              {event.project}
+            </span>
+          ) : null}
+          {event.model ? (
+            <span style={{ fontSize: '0.75rem', color: 'var(--muted)', border: '1px solid var(--border)', padding: '0.12rem 0.5rem', borderRadius: '999px' }}>
+              {event.model}
+            </span>
+          ) : null}
           <Badge kind={event.kind} />
           <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{event.agent}</span>
           <span style={{ fontSize: '0.8rem', color: 'var(--muted)', marginLeft: 'auto' }}>{timeAgo(event.created_at)}</span>
         </div>
-        <h1 style={{ fontSize: '1.35rem', lineHeight: 1.3, margin: '0 0 1.2rem' }}>{event.title}</h1>
+        {event.task ? (
+          <div style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.4rem' }}>
+            <span style={{ opacity: 0.7 }}>Current task:</span> {event.task}
+          </div>
+        ) : null}
+        <h1 style={{ fontSize: '1.35rem', lineHeight: 1.3, margin: '0 0 0.6rem' }}>{event.title}</h1>
+        {event.tags.length > 0 ? (
+          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '1.2rem' }}>
+            {event.tags.map((t) => (
+              <span key={t} style={{ fontSize: '0.72rem', color: 'var(--muted)', background: 'var(--bg-elev2)', padding: '0.12rem 0.5rem', borderRadius: '0.3rem' }}>
+                #{t}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div style={{ marginBottom: '0.6rem' }} />
+        )}
 
         <div style={{ background: 'var(--bg-elev)', border: '1px solid var(--border)', borderRadius: '0.9rem', padding: '1.1rem' }}>
           <BlockRenderer blocks={event.blocks} />

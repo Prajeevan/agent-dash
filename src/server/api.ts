@@ -48,7 +48,7 @@ async function maybePush(env: Env, event: EventRow): Promise<void> {
   if (!wants) return
   if (event.priority < 2 && (await inQuietHours(env))) return
   await pushToAll(env, {
-    title: event.title,
+    title: event.project ? `${event.project}: ${event.title}` : event.title,
     body: previewText(JSON.parse(event.blocks)),
     tag: event.task_id || event.id,
     eventId: event.id,
@@ -78,11 +78,37 @@ interface EventRow {
   created_at: number
   read_at: number | null
   expires_at: number
+  project: string | null
 }
 
 // ── Agent endpoints (bearer AGENT_KEY) ───────────────────────────────────────
 
 const VALID_KINDS = new Set(['update', 'question', 'done', 'error'])
+
+interface Meta {
+  project: string | null
+  task: string | null
+  model: string | null
+  tags: string // JSON array string
+}
+
+// Pull the attribution fields out of a request body, sanitized.
+function extractMeta(body: Record<string, unknown>): Meta {
+  const str = (v: unknown, max: number) =>
+    typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null
+  const tags = Array.isArray(body.tags)
+    ? (body.tags as unknown[])
+        .filter((t) => typeof t === 'string' && t.trim())
+        .slice(0, 12)
+        .map((t) => (t as string).trim().slice(0, 40))
+    : []
+  return {
+    project: str(body.project, 120),
+    task: str(body.task, 200),
+    model: str(body.model, 80),
+    tags: JSON.stringify(tags),
+  }
+}
 
 export async function createEvent(request: Request, env: Env): Promise<Response> {
   let body: Record<string, unknown>
@@ -111,19 +137,20 @@ export async function createEvent(request: Request, env: Env): Promise<Response>
     return json({ ok: false, error: 'Interactive blocks (buttons/form) are only valid on questions.' }, 400)
   }
 
+  const meta = extractMeta(body)
   const id = ulid()
   const t = now()
   await env.DB.prepare(
-    `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9)`,
+    `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at, project, task, model, tags)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11, ?12, ?13)`,
   )
-    .bind(id, agent, taskId, kind, title, JSON.stringify(parsed.data), priority, t, t + retentionMs(env))
+    .bind(id, agent, taskId, kind, title, JSON.stringify(parsed.data), priority, t, t + retentionMs(env), meta.project, meta.task, meta.model, meta.tags)
     .run()
 
   const event: EventRow = {
     id, agent, task_id: taskId, kind, title,
     blocks: JSON.stringify(parsed.data), priority, created_at: t, read_at: null,
-    expires_at: t + retentionMs(env),
+    expires_at: t + retentionMs(env), project: meta.project,
   }
   await maybePush(env, event)
   return json({ ok: true, id })
@@ -172,6 +199,12 @@ export async function updateEvent(id: string, request: Request, env: Env): Promi
     blocksJson = JSON.stringify(parsed.data)
   }
 
+  // Only overwrite meta fields the caller actually sent (COALESCE on null).
+  const project = 'project' in body ? extractMeta(body).project : null
+  const task = 'task' in body ? extractMeta(body).task : null
+  const model = 'model' in body ? extractMeta(body).model : null
+  const tags = 'tags' in body ? extractMeta(body).tags : null
+
   // COALESCE keeps the old value when we pass null. read_at resets so a fresh
   // update the human hasn't seen shows as unread again.
   await env.DB.prepare(
@@ -180,11 +213,15 @@ export async function updateEvent(id: string, request: Request, env: Env): Promi
        kind = COALESCE(?2, kind),
        priority = ?3,
        blocks = COALESCE(?4, blocks),
-       updated_at = ?5,
+       project = COALESCE(?5, project),
+       task = COALESCE(?6, task),
+       model = COALESCE(?7, model),
+       tags = COALESCE(?8, tags),
+       updated_at = ?9,
        read_at = NULL
-     WHERE id = ?6`,
+     WHERE id = ?10`,
   )
-    .bind(title, kind, priority, blocksJson, now(), id)
+    .bind(title, kind, priority, blocksJson, project, task, model, tags, now(), id)
     .run()
 
   if (body.notify === true) {
@@ -226,15 +263,16 @@ export async function createQuestion(request: Request, env: Env): Promise<Respon
   }
 
   const timeoutMin = Math.max(1, Math.min(10_080, Number(body.timeout_minutes ?? 1440) | 0)) // default 24h, max 7d
+  const meta = extractMeta(body)
   const id = ulid()
   const t = now()
   const timeoutAt = t + timeoutMin * 60_000
 
   const batch = [
     env.DB.prepare(
-      `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at)
-       VALUES (?1, ?2, ?3, 'question', ?4, ?5, 2, ?6, ?6, ?7)`,
-    ).bind(id, agent, taskId, title, JSON.stringify(parsed.data), t, t + retentionMs(env)),
+      `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at, project, task, model, tags)
+       VALUES (?1, ?2, ?3, 'question', ?4, ?5, 2, ?6, ?6, ?7, ?8, ?9, ?10, ?11)`,
+    ).bind(id, agent, taskId, title, JSON.stringify(parsed.data), t, t + retentionMs(env), meta.project, meta.task, meta.model, meta.tags),
     env.DB.prepare(
       `INSERT INTO questions (event_id, status, timeout_at) VALUES (?1, 'pending', ?2)`,
     ).bind(id, timeoutAt),
@@ -244,7 +282,7 @@ export async function createQuestion(request: Request, env: Env): Promise<Respon
   const event: EventRow = {
     id, agent, task_id: taskId, kind: 'question', title,
     blocks: JSON.stringify(parsed.data), priority: 2, created_at: t, read_at: null,
-    expires_at: t + retentionMs(env),
+    expires_at: t + retentionMs(env), project: meta.project,
   }
   await maybePush(env, event)
   return json({ ok: true, id, poll_url: `/api/v1/questions/${id}`, timeout_at: timeoutAt })
@@ -280,15 +318,30 @@ export async function getInbox(url: URL, env: Env): Promise<Response> {
   const agent = url.searchParams.get('agent')
   const q = agent
     ? env.DB.prepare(
-        `SELECT id, agent, task_id, kind, title, priority, created_at FROM events
+        `SELECT id, agent, task_id, kind, title, priority, created_at, project, task, model FROM events
          WHERE agent = ?1 ORDER BY created_at DESC LIMIT ?2`,
       ).bind(agent, limit)
     : env.DB.prepare(
-        `SELECT id, agent, task_id, kind, title, priority, created_at FROM events
+        `SELECT id, agent, task_id, kind, title, priority, created_at, project, task, model FROM events
          ORDER BY created_at DESC LIMIT ?1`,
       ).bind(limit)
   const { results } = await q.all()
   return json({ ok: true, events: results ?? [] })
+}
+
+// Distinct projects with unread + pending-question counts, for the filter bar.
+export async function getProjects(env: Env): Promise<Response> {
+  const { results } = await env.DB.prepare(
+    `SELECT
+       COALESCE(e.project, '') AS project,
+       COUNT(*) AS total,
+       SUM(CASE WHEN e.read_at IS NULL THEN 1 ELSE 0 END) AS unread,
+       SUM(CASE WHEN q.status = 'pending' THEN 1 ELSE 0 END) AS pending
+     FROM events e LEFT JOIN questions q ON q.event_id = e.id
+     GROUP BY COALESCE(e.project, '')
+     ORDER BY pending DESC, total DESC`,
+  ).all<{ project: string; total: number; unread: number; pending: number }>()
+  return json({ ok: true, projects: results ?? [] })
 }
 
 // ── Dashboard endpoints (session cookie) ─────────────────────────────────────
@@ -331,6 +384,10 @@ function hydrate(row: Record<string, unknown>): Record<string, unknown> {
     title: row.title,
     blocks: JSON.parse((row.blocks as string) || '[]'),
     priority: row.priority,
+    project: row.project ?? null,
+    task: row.task ?? null,
+    model: row.model ?? null,
+    tags: JSON.parse((row.tags as string) || '[]'),
     created_at: row.created_at,
     updated_at: row.updated_at ?? row.created_at,
     read_at: row.read_at,
