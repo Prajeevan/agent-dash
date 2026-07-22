@@ -33,7 +33,7 @@ You need a free [Cloudflare account](https://dash.cloudflare.com/sign-up) and
 Node 20+.
 
 ```bash
-git clone https://github.com/YOUR_NAME/agent-dash.git
+git clone https://github.com/Prajeevan/agent-dash.git
 cd agent-dash
 pnpm install          # or npm install
 npx wrangler login    # authorize wrangler with your Cloudflare account
@@ -77,7 +77,7 @@ Tools: `notify(title, blocks?, priority?)`, `ask(title, blocks)`, `wait_for_answ
 Codex, …) straight from GitHub:
 
 ```bash
-npx skills add YOUR_NAME/agent-dash
+npx skills add Prajeevan/agent-dash
 ```
 
 This drops `skills/agent-dash/SKILL.md` into your agent so it knows how to reach
