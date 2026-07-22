@@ -13,6 +13,7 @@ import {
 } from './server/auth'
 import {
   createEvent,
+  updateEvent,
   createQuestion,
   getQuestion,
   getInbox,
@@ -69,8 +70,10 @@ export default {
 
     // ── Agent API (bearer AGENT_KEY) ──
     if (path.startsWith('/api/v1/')) {
+      const eventUpdate = path.match(/^\/api\/v1\/events\/([^/]+)$/)
       const agentRoute =
         (path === '/api/v1/events' && method === 'POST') ||
+        (eventUpdate && method === 'POST') ||
         (path === '/api/v1/questions' && method === 'POST') ||
         (path === '/api/v1/inbox' && method === 'GET') ||
         (/^\/api\/v1\/questions\/[^/]+$/.test(path) && method === 'GET')
@@ -78,6 +81,7 @@ export default {
       if (agentRoute) {
         if (!isAgentAuthed(request, env)) return withCors(unauthorized())
         if (path === '/api/v1/events') return withCors(await createEvent(request, env))
+        if (eventUpdate) return withCors(await updateEvent(eventUpdate[1], request, env))
         if (path === '/api/v1/questions') return withCors(await createQuestion(request, env))
         if (path === '/api/v1/inbox') return withCors(await getInbox(url, env))
         const qid = path.split('/').pop() as string

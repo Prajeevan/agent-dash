@@ -15,6 +15,7 @@ export interface EventItem {
   blocks: unknown[]
   priority: number
   created_at: number
+  updated_at: number
   read_at: number | null
   question: QuestionState | null
 }
@@ -36,9 +37,9 @@ export class AuthError extends Error {
 }
 
 export const api = {
-  feed: (since?: string) =>
+  feed: (sinceTs?: number) =>
     req<{ ok: boolean; events: EventItem[] }>(
-      `/api/v1/feed${since ? `?since=${encodeURIComponent(since)}` : ''}`,
+      `/api/v1/feed${sinceTs ? `?since_ts=${sinceTs}` : ''}`,
     ),
   event: (id: string) => req<{ ok: boolean; event: EventItem }>(`/api/v1/event/${id}`),
   stats: () => req<{ ok: boolean; unread: number; pending_questions: number }>('/api/v1/stats'),

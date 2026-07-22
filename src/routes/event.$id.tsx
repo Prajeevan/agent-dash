@@ -37,13 +37,16 @@ function EventDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  // If it's an unanswered question, keep it fresh in case it's answered/expired elsewhere.
+  // Keep the detail fresh: a progress event may be updating in place, or a
+  // pending question may get answered/expired elsewhere. Poll while visible.
   useEffect(() => {
-    if (event?.question?.status !== 'pending') return
-    const iv = setInterval(load, 5000)
+    const tick = () => {
+      if (document.visibilityState === 'visible') load()
+    }
+    const iv = setInterval(tick, 5000)
     return () => clearInterval(iv)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event?.question?.status])
+  }, [id])
 
   async function submit(answer: Record<string, unknown>) {
     setSubmitting(true)

@@ -114,8 +114,8 @@ export async function createEvent(request: Request, env: Env): Promise<Response>
   const id = ulid()
   const t = now()
   await env.DB.prepare(
-    `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, expires_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+    `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9)`,
   )
     .bind(id, agent, taskId, kind, title, JSON.stringify(parsed.data), priority, t, t + retentionMs(env))
     .run()
@@ -126,6 +126,77 @@ export async function createEvent(request: Request, env: Env): Promise<Response>
     expires_at: t + retentionMs(env),
   }
   await maybePush(env, event)
+  return json({ ok: true, id })
+}
+
+// Patch an existing event in place — the primitive behind live progress. The
+// agent POSTs the id it got back from createEvent, with new blocks/title/kind.
+// Pushes only if the caller explicitly asks (avoid buzzing on every % tick).
+export async function updateEvent(id: string, request: Request, env: Env): Promise<Response> {
+  const existing = await env.DB.prepare(
+    'SELECT id, agent, task_id, kind, priority FROM events WHERE id = ?1',
+  )
+    .bind(id)
+    .first<{ id: string; agent: string; task_id: string | null; kind: string; priority: number }>()
+  if (!existing) return json({ ok: false, error: 'Unknown event id.' }, 404)
+  if (existing.kind === 'question') {
+    return json({ ok: false, error: 'Questions cannot be updated in place.' }, 400)
+  }
+
+  let body: Record<string, unknown>
+  try {
+    body = (await request.json()) as Record<string, unknown>
+  } catch {
+    return json({ ok: false, error: 'Invalid JSON body.' }, 400)
+  }
+
+  // Resolve the new values, falling back to the existing row where omitted.
+  const title =
+    typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 300) : null
+  const kind =
+    typeof body.kind === 'string' && VALID_KINDS.has(body.kind) && body.kind !== 'question'
+      ? body.kind
+      : null
+  const priority =
+    body.priority != null ? Math.max(0, Math.min(2, Number(body.priority) | 0)) : existing.priority
+
+  let blocksJson: string | null = null
+  let blocks: Block[] | null = null
+  if (body.blocks != null) {
+    const parsed = BlocksSchema.safeParse(body.blocks)
+    if (!parsed.success) return json({ ok: false, error: 'Invalid blocks.' }, 400)
+    if (hasInteractive(parsed.data)) {
+      return json({ ok: false, error: 'Interactive blocks are only valid on questions.' }, 400)
+    }
+    blocks = parsed.data
+    blocksJson = JSON.stringify(parsed.data)
+  }
+
+  // COALESCE keeps the old value when we pass null. read_at resets so a fresh
+  // update the human hasn't seen shows as unread again.
+  await env.DB.prepare(
+    `UPDATE events SET
+       title = COALESCE(?1, title),
+       kind = COALESCE(?2, kind),
+       priority = ?3,
+       blocks = COALESCE(?4, blocks),
+       updated_at = ?5,
+       read_at = NULL
+     WHERE id = ?6`,
+  )
+    .bind(title, kind, priority, blocksJson, now(), id)
+    .run()
+
+  if (body.notify === true) {
+    await pushToAll(env, {
+      title: title ?? 'Update',
+      body: blocks ? previewText(blocks) : 'Progress updated.',
+      tag: existing.task_id || id,
+      eventId: id,
+      kind: kind ?? existing.kind,
+      priority,
+    })
+  }
   return json({ ok: true, id })
 }
 
@@ -161,8 +232,8 @@ export async function createQuestion(request: Request, env: Env): Promise<Respon
 
   const batch = [
     env.DB.prepare(
-      `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, expires_at)
-       VALUES (?1, ?2, ?3, 'question', ?4, ?5, 2, ?6, ?7)`,
+      `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at)
+       VALUES (?1, ?2, ?3, 'question', ?4, ?5, 2, ?6, ?6, ?7)`,
     ).bind(id, agent, taskId, title, JSON.stringify(parsed.data), t, t + retentionMs(env)),
     env.DB.prepare(
       `INSERT INTO questions (event_id, status, timeout_at) VALUES (?1, 'pending', ?2)`,
@@ -222,26 +293,21 @@ export async function getInbox(url: URL, env: Env): Promise<Response> {
 
 // ── Dashboard endpoints (session cookie) ─────────────────────────────────────
 
-// Cursor-based feed for open dashboard tabs. `since` is the newest id the tab
-// already has; returns anything strictly newer (ULIDs sort by time).
+// Timestamp-cursor feed for open dashboard tabs. `since_ts` is the newest
+// updated_at the tab already has; we return anything created OR updated after
+// it — so in-place progress updates flow through, not just brand-new events.
+// Ordered by created_at so a card stays put while its progress bar moves.
 export async function getFeed(url: URL, env: Env): Promise<Response> {
-  const since = url.searchParams.get('since')
+  const sinceTs = Number(url.searchParams.get('since_ts') ?? '0') || 0
   const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') ?? '100') | 0))
-  const rows = since
-    ? await env.DB.prepare(
-        `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout
-         FROM events e LEFT JOIN questions q ON q.event_id = e.id
-         WHERE e.id > ?1 ORDER BY e.created_at DESC LIMIT ?2`,
-      )
-        .bind(since, limit)
-        .all()
-    : await env.DB.prepare(
-        `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout
-         FROM events e LEFT JOIN questions q ON q.event_id = e.id
-         ORDER BY e.created_at DESC LIMIT ?1`,
-      )
-        .bind(limit)
-        .all()
+  const rows = await env.DB.prepare(
+    `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout
+     FROM events e LEFT JOIN questions q ON q.event_id = e.id
+     WHERE COALESCE(e.updated_at, e.created_at) > ?1
+     ORDER BY e.created_at DESC LIMIT ?2`,
+  )
+    .bind(sinceTs, limit)
+    .all()
   return json({ ok: true, events: (rows.results ?? []).map(hydrate) })
 }
 
@@ -266,6 +332,7 @@ function hydrate(row: Record<string, unknown>): Record<string, unknown> {
     blocks: JSON.parse((row.blocks as string) || '[]'),
     priority: row.priority,
     created_at: row.created_at,
+    updated_at: row.updated_at ?? row.created_at,
     read_at: row.read_at,
     question:
       row.q_status != null

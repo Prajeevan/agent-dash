@@ -12,17 +12,19 @@ export const Route = createFileRoute('/')({
 function Inbox() {
   const [events, setEvents] = useState<EventItem[]>([])
   const [state, setState] = useState<'loading' | 'ok' | 'locked'>('loading')
-  const newest = useRef<string | null>(null)
+  const sinceTs = useRef<number>(0)
 
   async function load(full = false) {
     try {
-      const res = await api.feed(full ? undefined : newest.current ?? undefined)
+      const res = await api.feed(full ? undefined : sinceTs.current || undefined)
       if (res.events.length) {
         setEvents((prev) => {
+          // Merge by id so an in-place update (e.g. a moving progress bar)
+          // replaces the card's content while it keeps its position.
           const map = new Map(prev.map((e) => [e.id, e]))
           for (const e of res.events) map.set(e.id, e)
           const merged = [...map.values()].sort((a, b) => b.created_at - a.created_at)
-          newest.current = merged[0]?.id ?? newest.current
+          sinceTs.current = Math.max(sinceTs.current, ...res.events.map((e) => e.updated_at))
           return merged
         })
       }

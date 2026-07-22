@@ -1,6 +1,6 @@
 import type { Env } from './env'
 import { json } from './util'
-import { createEvent, createQuestion, getQuestion } from './api'
+import { createEvent, updateEvent, createQuestion, getQuestion } from './api'
 
 // ── Stateless MCP over Streamable HTTP ───────────────────────────────────────
 // A plain JSON-RPC POST handler — NOT Cloudflare's McpAgent (which is a Durable
@@ -25,6 +25,23 @@ const TOOLS = [
         agent: { type: 'string', description: 'Label for who is sending (e.g. "claude-code").' },
       },
       required: ['title'],
+    },
+  },
+  {
+    name: 'update',
+    description:
+      'Update an existing event in place — the way to send LIVE progress. First call notify to create the event and keep its returned id; then call update repeatedly with new blocks (e.g. a progress block going 0→50→100) to move the same card without spamming new rows. Set notify:true on the final call to push a "done" notification.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        event_id: { type: 'string', description: 'The id returned by notify.' },
+        title: { type: 'string' },
+        blocks: { type: 'array', description: 'New display blocks (replaces the old ones).' },
+        kind: { type: 'string', description: 'update | done | error' },
+        priority: { type: 'number' },
+        notify: { type: 'boolean', description: 'Send a push for this update. Default false — leave off for silent progress ticks.' },
+      },
+      required: ['event_id'],
     },
   },
   {
@@ -72,6 +89,11 @@ function fakeRequest(body: unknown): Request {
 async function callTool(name: string, args: Record<string, unknown>, env: Env): Promise<unknown> {
   if (name === 'notify') {
     const res = await createEvent(fakeRequest({ ...args, kind: 'update' }), env)
+    return res.json()
+  }
+  if (name === 'update') {
+    const { event_id, ...rest } = args
+    const res = await updateEvent(String(event_id ?? ''), fakeRequest(rest), env)
     return res.json()
   }
   if (name === 'ask') {
