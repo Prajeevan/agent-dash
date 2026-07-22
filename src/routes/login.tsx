@@ -56,6 +56,13 @@ function LoginPage() {
   const [agentKey, setAgentKey] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState<'' | 'key' | 'cmd'>('')
+
+  function copy(what: 'key' | 'cmd', text: string) {
+    navigator.clipboard?.writeText(text)
+    setCopied(what)
+    setTimeout(() => setCopied(''), 1500)
+  }
 
   // Already signed in? Skip straight to the dashboard.
   useEffect(() => {
@@ -165,16 +172,32 @@ function LoginPage() {
             <code style={codeBox}>{agentKey}</code>
             <button
               type="button"
-              onClick={() => navigator.clipboard?.writeText(agentKey)}
+              onClick={() => copy('key', agentKey)}
               style={{ ...btnStyle, marginTop: '0.75rem' }}
             >
-              Copy key
+              {copied === 'key' ? 'Copied ✓' : 'Copy key'}
             </button>
             <div style={{ marginTop: '1.5rem' }}>
-              <p style={{ color: 'var(--muted)', fontSize: '0.85rem', margin: '0 0 0.4rem' }}>Connect your agent:</p>
-              <code style={{ ...codeBox, fontSize: '0.78rem' }}>
-                npx agentdash login --url {origin} --key {agentKey.slice(0, 12)}…
-              </code>
+              <p style={{ color: 'var(--muted)', fontSize: '0.85rem', margin: '0 0 0.4rem' }}>
+                Connect your agent — paste this into your terminal:
+              </p>
+              <div style={{ position: 'relative' }}>
+                <code style={{ ...codeBox, fontSize: '0.78rem', paddingRight: '4.5rem' }}>
+                  npx agentdash login --url {origin} --key {agentKey}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => copy('cmd', `npx agentdash login --url ${origin} --key ${agentKey}`)}
+                  style={{
+                    position: 'absolute', top: '0.4rem', right: '0.4rem',
+                    background: 'var(--bg-elev)', border: '1px solid var(--border)',
+                    borderRadius: '0.4rem', padding: '0.25rem 0.55rem', fontSize: '0.72rem',
+                    color: 'var(--text)', cursor: 'pointer',
+                  }}
+                >
+                  {copied === 'cmd' ? 'Copied ✓' : 'Copy'}
+                </button>
+              </div>
             </div>
             <button
               type="button"
