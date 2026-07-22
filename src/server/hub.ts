@@ -67,11 +67,13 @@ export class Hub {
   }
 }
 
-// Called after any change. No-op unless instant mode is enabled.
-export async function pokeHub(env: Env): Promise<void> {
+// Called after any change. No-op unless instant mode is enabled. Each account
+// gets its own Durable Object (idFromName(accountId)) so a poke only wakes that
+// account's open tabs — never broadcasts across tenants.
+export async function pokeHub(env: Env, accountId: string): Promise<void> {
   if (env.INSTANT !== '1' || !env.HUB) return
   try {
-    const stub = env.HUB.get(env.HUB.idFromName('main'))
+    const stub = env.HUB.get(env.HUB.idFromName(accountId))
     await stub.fetch('https://hub.internal/poke')
   } catch {
     /* instant delivery is best-effort; polling still covers it */

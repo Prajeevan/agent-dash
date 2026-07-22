@@ -113,6 +113,20 @@ export const api = {
     req('/api/v1/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
   logout: () => req('/api/logout', { method: 'POST' }),
   logoutAll: () => req('/api/logout-all', { method: 'POST' }),
+
+  // ── Auth (email OTP) ──
+  requestCode: (email: string) =>
+    req<{ ok: boolean; error?: string }>('/api/auth/request-code', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  verifyCode: (email: string, code: string) =>
+    req<{ ok: boolean; error?: string; new?: boolean; agent_key?: string | null; key_prefix?: string }>(
+      '/api/auth/verify',
+      { method: 'POST', body: JSON.stringify({ email, code }) },
+    ),
+  account: () => req<{ ok: boolean; email: string; key_prefix: string }>('/api/account'),
+  rotateKey: () => req<{ ok: boolean; agent_key: string }>('/api/auth/rotate-key', { method: 'POST' }),
 }
 
 export function timeAgo(ts: number): string {

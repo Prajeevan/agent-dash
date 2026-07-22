@@ -167,14 +167,12 @@ So the human can tell agents/tasks apart at a glance, include on every call:
 To answer your questions the human must be logged into Agent Dash on their
 phone. If they may not be, tell them:
 
-> Run `pnpm run login` in the agent-dash folder and **scan the QR code** with
-> your phone (or open the printed link), then answer there.
+> Open your Agent Dash hub URL (`AGENT_DASH_URL`) on your phone, enter your
+> email, and type the one-time code we send you. Then answer there.
 
-`pnpm run login` prints a scannable QR in the terminal. If your own UI can
-render a QR **inline** (terminal image, desktop chat) and you have been given a
-login URL, you may show it as a QR for convenience — but the login URL contains
-a secret one-time token, so render it **locally only** and NEVER submit it to a
-third-party QR/image service. When in doubt, just show the link.
+Login is email → one-time code (no app, no password). The same page is where a
+new user gets their `AGENT_KEY` (shown once). If the human hasn't given you a
+hub URL yet, ask for it once.
 
 ## Etiquette
 

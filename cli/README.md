@@ -1,15 +1,15 @@
-# agent-dash (CLI)
+# agentdash (CLI)
 
 Connect an agent to your Agent Dash hub, log in on your phone, and send
 updates/questions from scripts.
 
 ```bash
-npx agent-dash login            # save + verify your hub URL and agent key
-npx agent-dash connect          # write ./.mcp.json so your agent can call the hub
-npx agent-dash open             # QR to open the dashboard on your phone
-npx agent-dash notify "Deploy finished" --priority 1 --project "API"
-npx agent-dash ask "Ship it?" --button Ship --button Hold   # waits, prints the answer JSON
-npx agent-dash status
+npx agentdash login            # save + verify your hub URL and agent key
+npx agentdash connect          # write ./.mcp.json so your agent can call the hub
+npx agentdash open             # QR to open the dashboard on your phone
+npx agentdash notify "Deploy finished" --priority 1 --project "API"
+npx agentdash ask "Ship it?" --button Ship --button Hold   # waits, prints the answer JSON
+npx agentdash status
 ```
 
 Credentials resolve from flags → env (`AGENT_DASH_URL`, `AGENT_KEY`,
@@ -21,8 +21,8 @@ Pass an encryption key at login and the CLI encrypts block content before it
 leaves your machine — the hub stores ciphertext it can't read:
 
 ```bash
-npx agent-dash login --url … --key … --enc-key <ENC_KEY>
-npx agent-dash notify "Secret result" --markdown "sensitive…" --e2e
+npx agentdash login --url … --key … --enc-key <ENC_KEY>
+npx agentdash notify "Secret result" --markdown "sensitive…" --e2e
 ```
 
 Set the same `ENC_KEY` in the phone app (Settings → Encryption) so it can

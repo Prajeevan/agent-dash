@@ -75,6 +75,34 @@ export async function hmacVerify(secret: string, data: string, sig: string): Pro
   return timingSafeEqual(expected, sig)
 }
 
+// ── SHA-256 → lowercase hex. Used to store agent keys as a hash (never the
+// raw key) and to hash OTP codes before they touch KV.
+export async function sha256hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+  const bytes = new Uint8Array(digest)
+  let hex = ''
+  for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0')
+  return hex
+}
+
+// ── A high-entropy URL-safe random token (default 32 bytes → ~43 chars).
+export function randomToken(bytes = 32): string {
+  const buf = new Uint8Array(bytes)
+  crypto.getRandomValues(buf)
+  return b64urlEncode(buf)
+}
+
+// ── A numeric one-time code, cryptographically random, fixed length (default 6).
+export function numericCode(digits = 6): string {
+  const buf = new Uint32Array(1)
+  let out = ''
+  for (let i = 0; i < digits; i++) {
+    crypto.getRandomValues(buf)
+    out += (buf[0] % 10).toString()
+  }
+  return out
+}
+
 // Read the agent bearer token from an Authorization header.
 export function bearer(request: Request): string | null {
   const h = request.headers.get('authorization') ?? ''

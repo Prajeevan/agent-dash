@@ -111,28 +111,28 @@ function fakeRequest(body: unknown): Request {
   })
 }
 
-async function callTool(name: string, args: Record<string, unknown>, env: Env): Promise<unknown> {
+async function callTool(name: string, args: Record<string, unknown>, env: Env, accountId: string): Promise<unknown> {
   if (name === 'notify') {
-    const res = await createEvent(fakeRequest({ ...args, kind: 'update' }), env)
+    const res = await createEvent(fakeRequest({ ...args, kind: 'update' }), env, accountId)
     return res.json()
   }
   if (name === 'update') {
     const { event_id, ...rest } = args
-    const res = await updateEvent(String(event_id ?? ''), fakeRequest(rest), env)
+    const res = await updateEvent(String(event_id ?? ''), fakeRequest(rest), env, accountId)
     return res.json()
   }
   if (name === 'ask') {
-    const res = await createQuestion(fakeRequest(args), env)
+    const res = await createQuestion(fakeRequest(args), env, accountId)
     return res.json()
   }
   if (name === 'wait_for_answer') {
     const id = String(args.question_id ?? '')
-    const res = await getQuestion(id, env)
+    const res = await getQuestion(id, env, accountId)
     return res.json()
   }
   if (name === 'clear') {
     const scope = args.scope === 'all' ? 'all' : 'read'
-    const res = await clearEvents(env, scope, typeof args.project === 'string' ? args.project : undefined)
+    const res = await clearEvents(env, accountId, scope, typeof args.project === 'string' ? args.project : undefined)
     return res.json()
   }
   throw new Error(`Unknown tool: ${name}`)
@@ -145,7 +145,7 @@ function rpcError(id: unknown, code: number, message: string) {
   return { jsonrpc: '2.0', id, error: { code, message } }
 }
 
-export async function handleMcp(request: Request, env: Env): Promise<Response> {
+export async function handleMcp(request: Request, env: Env, accountId: string): Promise<Response> {
   if (request.method === 'GET') {
     // Some clients probe with GET; advertise that we speak JSON-RPC over POST.
     return json({ ok: true, transport: 'streamable-http', protocol: PROTOCOL_VERSION })
@@ -177,7 +177,7 @@ export async function handleMcp(request: Request, env: Env): Promise<Response> {
       const toolName = String(params?.name ?? '')
       const args = (params?.arguments ?? {}) as Record<string, unknown>
       try {
-        const out = await callTool(toolName, args, env)
+        const out = await callTool(toolName, args, env, accountId)
         return json(
           rpcResult(id, {
             content: [{ type: 'text', text: JSON.stringify(out) }],

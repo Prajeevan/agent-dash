@@ -54,15 +54,15 @@ async function login() {
   if (flags['enc-key']) next.encKey = flags['enc-key']
   saveConfig(next)
   console.log(`\nSaved to your config. You can now:`)
-  console.log(`  agent-dash connect          # write MCP config for your agent`)
-  console.log(`  agent-dash notify "hi"      # send a test update`)
-  console.log(`  agent-dash open             # log in on your phone (QR)\n`)
+  console.log(`  agentdash connect          # write MCP config for your agent`)
+  console.log(`  agentdash notify "hi"      # send a test update`)
+  console.log(`  agentdash open             # log in on your phone (QR)\n`)
 }
 
 // ── connect: write the MCP server entry for an agent ─────────────────────────
 async function connect() {
   const { url, key } = resolve(flags)
-  if (!url || !key) die('Run `agent-dash login` first (or pass --url and --key).')
+  if (!url || !key) die('Run `agentdash login` first (or pass --url and --key).')
 
   const entry = { url: `${url}/mcp`, headers: { Authorization: `Bearer ${key}` } }
   // Claude Code / most MCP clients read a project-local .mcp.json.
@@ -86,7 +86,7 @@ async function connect() {
 // ── open: show a QR to log in on your phone ──────────────────────────────────
 async function open() {
   const { url } = resolve(flags)
-  if (!url) die('No hub URL. Run `agent-dash login` first.')
+  if (!url) die('No hub URL. Run `agentdash login` first.')
   console.log('\nScan to open Agent Dash on your phone (log in there with your magic link):\n')
   qr(url)
   console.log(`  ${url}\n`)
@@ -98,8 +98,8 @@ async function open() {
 // ── notify: send an update (great for scripts / hooks) ───────────────────────
 async function notify() {
   const conf = resolve(flags)
-  if (!conf.url || !conf.key) die('Run `agent-dash login` first.')
-  const title = positionals.slice(1).join(' ') || die('Usage: agent-dash notify "your message"')
+  if (!conf.url || !conf.key) die('Run `agentdash login` first.')
+  const title = positionals.slice(1).join(' ') || die('Usage: agentdash notify "your message"')
 
   let blocks = flags.markdown ? [{ type: 'markdown', text: flags.markdown }] : []
   const body = {
@@ -122,8 +122,8 @@ async function notify() {
 // ── ask: post a question, wait for the answer, print it ──────────────────────
 async function ask() {
   const conf = resolve(flags)
-  if (!conf.url || !conf.key) die('Run `agent-dash login` first.')
-  const title = positionals.slice(1).join(' ') || die('Usage: agent-dash ask "question" --button A --button B')
+  if (!conf.url || !conf.key) die('Run `agentdash login` first.')
+  const title = positionals.slice(1).join(' ') || die('Usage: agentdash ask "question" --button A --button B')
   const options = flags.button || []
   if (options.length < 1) die('Provide at least one --button option (or extend to forms).')
 
@@ -177,7 +177,7 @@ async function attachBlocks(body, blocks, conf, kindForValidation) {
 function status() {
   const cfg = loadConfig()
   console.log('\nAgent Dash CLI')
-  console.log('  config:  ' + (cfg.url ? 'saved' : '(none — run `agent-dash login`)'))
+  console.log('  config:  ' + (cfg.url ? 'saved' : '(none — run `agentdash login`)'))
   if (cfg.url) console.log('  hub:     ' + cfg.url)
   console.log('  e2e:     ' + (cfg.encKey ? 'on (encryption key set)' : 'off'))
   console.log('')
@@ -185,14 +185,14 @@ function status() {
 
 function help() {
   console.log(`
-agent-dash — CLI for your Agent Dash hub
+agentdash — CLI for your Agent Dash hub
 
-  agent-dash login [--url U --key K] [--enc-key E]   Save + verify hub credentials
-  agent-dash connect                                Write ./.mcp.json for your agent
-  agent-dash open                                   QR to log in on your phone
-  agent-dash notify "msg" [--priority 1 --project P --task T --model M --markdown "…" --tag x]
-  agent-dash ask "q" --button A --button B [--project P …]   Ask + wait, prints the answer JSON
-  agent-dash status                                 Show current config
+  agentdash login [--url U --key K] [--enc-key E]   Save + verify hub credentials
+  agentdash connect                                Write ./.mcp.json for your agent
+  agentdash open                                   QR to log in on your phone
+  agentdash notify "msg" [--priority 1 --project P --task T --model M --markdown "…" --tag x]
+  agentdash ask "q" --button A --button B [--project P …]   Ask + wait, prints the answer JSON
+  agentdash status                                 Show current config
 
   --e2e            End-to-end encrypt block content (needs --enc-key set at login)
   Env: AGENT_DASH_URL, AGENT_KEY, AGENT_DASH_ENC_KEY override saved config.

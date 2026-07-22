@@ -156,6 +156,10 @@ function SettingsPage() {
           )}
         </Card>
 
+        <Card title="Your agent key">
+          <AgentKeyCard />
+        </Card>
+
         <Card title="Connect an agent">
           <p style={{ color: 'var(--muted)', fontSize: '0.9rem', lineHeight: 1.6, margin: '0 0 0.8rem' }}>
             MCP clients (Claude Code, Cursor, Codex) — add this server. Use your <code>AGENT_KEY</code>.
@@ -324,6 +328,73 @@ function ClearButtons() {
         </div>
       ) : null}
       {msg ? <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginTop: '0.8rem' }}>{msg}</p> : null}
+    </div>
+  )
+}
+
+// Shows the account's key prefix (the raw key is never stored, so it can't be
+// re-shown) and lets the user rotate to a fresh key — revealed once.
+function AgentKeyCard() {
+  const [email, setEmail] = useState<string | null>(null)
+  const [prefix, setPrefix] = useState<string | null>(null)
+  const [rotated, setRotated] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    api.account().then((a) => { setEmail(a.email); setPrefix(a.key_prefix) }).catch(() => {})
+  }, [])
+
+  async function rotate() {
+    setConfirming(false)
+    setBusy(true)
+    try {
+      const res = await api.rotateKey()
+      setRotated(res.agent_key)
+      setPrefix(res.agent_key.slice(0, 16))
+    } catch {
+      /* ignore */
+    }
+    setBusy(false)
+  }
+
+  return (
+    <div>
+      <p style={{ color: 'var(--muted)', fontSize: '0.9rem', lineHeight: 1.6, margin: '0 0 0.8rem' }}>
+        {email ? <>Signed in as <strong style={{ color: 'var(--text)' }}>{email}</strong>. </> : null}
+        Agents authenticate with this key. It's stored only as a hash — we can't show it again, so
+        rotate if you lose it.
+      </p>
+
+      {rotated ? (
+        <div style={{ marginBottom: '0.9rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--success)', margin: '0 0 0.4rem', fontWeight: 600 }}>
+            New key — copy it now, it won't be shown again:
+          </p>
+          <Snippet text={rotated} />
+        </div>
+      ) : (
+        <p style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--muted)', margin: '0 0 0.9rem' }}>
+          {prefix ? `${prefix}…` : 'Loading…'}
+        </p>
+      )}
+
+      {confirming ? (
+        <div style={{ padding: '0.8rem', border: '1px solid var(--error)', borderRadius: '0.6rem', background: 'color-mix(in srgb, var(--error) 8%, transparent)' }}>
+          <p style={{ margin: '0 0 0.7rem', fontSize: '0.9rem' }}>
+            Rotate the key? The current key stops working immediately — every connected agent must be
+            updated with the new one.
+          </p>
+          <div style={{ display: 'flex', gap: '0.6rem' }}>
+            <button onClick={rotate} disabled={busy} style={{ ...btn(true), background: 'var(--error)' }}>
+              Yes, rotate
+            </button>
+            <button onClick={() => setConfirming(false)} style={btn(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setConfirming(true)} style={btn(false)}>Rotate key</button>
+      )}
     </div>
   )
 }

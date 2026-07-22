@@ -146,12 +146,18 @@ export async function sendPush(
 }
 
 // Fan out to every stored subscription, pruning any that report gone.
-export async function pushToAll(env: Env, notification: unknown): Promise<void> {
-  const { results } = await env.DB.prepare('SELECT id, endpoint, keys FROM push_subscriptions').all<{
-    id: string
-    endpoint: string
-    keys: string
-  }>()
+// Send to every device subscribed under one account. Scoped by account_id so a
+// notification never lands on another tenant's phone.
+export async function pushToAll(env: Env, accountId: string, notification: unknown): Promise<void> {
+  const { results } = await env.DB.prepare(
+    'SELECT id, endpoint, keys FROM push_subscriptions WHERE account_id = ?1',
+  )
+    .bind(accountId)
+    .all<{
+      id: string
+      endpoint: string
+      keys: string
+    }>()
   await Promise.all(
     (results ?? []).map(async (row) => {
       const sub: PushSubscription = { endpoint: row.endpoint, keys: JSON.parse(row.keys) }

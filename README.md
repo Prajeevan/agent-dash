@@ -91,13 +91,13 @@ curl -X POST "$AGENT_DASH_URL/api/v1/events" \
   -d '{"agent":"claude","title":"Build finished","priority":1}'
 ```
 
-**CLI** — [`npx agent-dash`](cli) connects an agent, logs you in on your phone
+**CLI** — [`npx agentdash`](cli) connects an agent, logs you in on your phone
 (QR), and sends updates/questions from scripts:
 
 ```bash
-npx agent-dash login       # save + verify your hub URL and agent key
-npx agent-dash connect     # write ./.mcp.json for your agent
-npx agent-dash notify "Build finished" --priority 1 --project "API"
+npx agentdash login       # save + verify your hub URL and agent key
+npx agentdash connect     # write ./.mcp.json for your agent
+npx agentdash notify "Build finished" --priority 1 --project "API"
 ```
 
 **ChatGPT Actions** — import `https://your-url/api/v1/openapi.json`.

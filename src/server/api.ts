@@ -4,31 +4,38 @@ import { BlocksSchema, hasInteractive, answerTargets, type Block } from './block
 import { pushToAll, type PushSubscription } from './push'
 import { pokeHub } from './hub'
 
+// Every exported handler takes the resolved `accountId` and scopes all data to
+// it. This is the tenant boundary — miss it on any query and one user could see
+// or mutate another's inbox.
+
 // ── retention / settings helpers ─────────────────────────────────────────────
 function retentionMs(env: Env): number {
   const days = Number(env.EVENT_RETENTION_DAYS ?? '30')
   return Math.max(1, days) * 86_400_000
 }
 
-async function getSetting(env: Env, key: string): Promise<string | null> {
-  const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?1')
-    .bind(key)
+async function getSetting(env: Env, accountId: string, key: string): Promise<string | null> {
+  const row = await env.DB.prepare(
+    'SELECT value FROM account_settings WHERE account_id = ?1 AND key = ?2',
+  )
+    .bind(accountId, key)
     .first<{ value: string }>()
   return row?.value ?? null
 }
 
-async function setSetting(env: Env, key: string, value: string): Promise<void> {
+async function setSetting(env: Env, accountId: string, key: string, value: string): Promise<void> {
   await env.DB.prepare(
-    'INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    `INSERT INTO account_settings (account_id, key, value) VALUES (?1, ?2, ?3)
+     ON CONFLICT(account_id, key) DO UPDATE SET value = excluded.value`,
   )
-    .bind(key, value)
+    .bind(accountId, key, value)
     .run()
 }
 
 // Quiet hours: suppress non-urgent push between start/end (minutes since UTC
 // midnight, offset by the user's saved tz). Urgent (priority 2) always rings.
-async function inQuietHours(env: Env): Promise<boolean> {
-  const raw = await getSetting(env, 'quiet_hours')
+async function inQuietHours(env: Env, accountId: string): Promise<boolean> {
+  const raw = await getSetting(env, accountId, 'quiet_hours')
   if (!raw) return false
   try {
     const { start, end, offsetMin } = JSON.parse(raw) as {
@@ -44,11 +51,11 @@ async function inQuietHours(env: Env): Promise<boolean> {
   }
 }
 
-async function maybePush(env: Env, event: EventRow): Promise<void> {
+async function maybePush(env: Env, accountId: string, event: EventRow): Promise<void> {
   const wants = event.kind === 'question' || event.priority >= 1
   if (!wants) return
-  if (event.priority < 2 && (await inQuietHours(env))) return
-  await pushToAll(env, {
+  if (event.priority < 2 && (await inQuietHours(env, accountId))) return
+  await pushToAll(env, accountId, {
     title: event.project ? `${event.project}: ${event.title}` : event.title,
     // Encrypted events carry ciphertext blocks the server can't read — the
     // notification stays generic; the app decrypts the detail on open.
@@ -111,7 +118,7 @@ function normalizeBlocks(
   return { blocks: JSON.stringify(parsed.data), enc: 0 }
 }
 
-// ── Agent endpoints (bearer AGENT_KEY) ───────────────────────────────────────
+// ── Agent endpoints (bearer agent key → accountId) ───────────────────────────
 
 const VALID_KINDS = new Set(['update', 'question', 'done', 'error'])
 
@@ -140,7 +147,7 @@ function extractMeta(body: Record<string, unknown>): Meta {
   }
 }
 
-export async function createEvent(request: Request, env: Env): Promise<Response> {
+export async function createEvent(request: Request, env: Env, accountId: string): Promise<Response> {
   let body: Record<string, unknown>
   try {
     body = (await request.json()) as Record<string, unknown>
@@ -166,10 +173,10 @@ export async function createEvent(request: Request, env: Env): Promise<Response>
   const id = ulid()
   const t = now()
   await env.DB.prepare(
-    `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at, project, task, model, tags, enc)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`,
+    `INSERT INTO events (id, account_id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at, project, task, model, tags, enc)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?10, ?11, ?12, ?13, ?14, ?15)`,
   )
-    .bind(id, agent, taskId, kind, title, norm.blocks, priority, t, t + retentionMs(env), meta.project, meta.task, meta.model, meta.tags, norm.enc)
+    .bind(id, accountId, agent, taskId, kind, title, norm.blocks, priority, t, t + retentionMs(env), meta.project, meta.task, meta.model, meta.tags, norm.enc)
     .run()
 
   const event: EventRow = {
@@ -177,19 +184,19 @@ export async function createEvent(request: Request, env: Env): Promise<Response>
     blocks: norm.blocks, priority, created_at: t, read_at: null,
     expires_at: t + retentionMs(env), project: meta.project, enc: norm.enc,
   }
-  await maybePush(env, event)
-  await pokeHub(env)
+  await maybePush(env, accountId, event)
+  await pokeHub(env, accountId)
   return json({ ok: true, id })
 }
 
 // Patch an existing event in place — the primitive behind live progress. The
 // agent POSTs the id it got back from createEvent, with new blocks/title/kind.
 // Pushes only if the caller explicitly asks (avoid buzzing on every % tick).
-export async function updateEvent(id: string, request: Request, env: Env): Promise<Response> {
+export async function updateEvent(id: string, request: Request, env: Env, accountId: string): Promise<Response> {
   const existing = await env.DB.prepare(
-    'SELECT id, agent, task_id, kind, priority FROM events WHERE id = ?1',
+    'SELECT id, agent, task_id, kind, priority FROM events WHERE id = ?1 AND account_id = ?2',
   )
-    .bind(id)
+    .bind(id, accountId)
     .first<{ id: string; agent: string; task_id: string | null; kind: string; priority: number }>()
   if (!existing) return json({ ok: false, error: 'Unknown event id.' }, 404)
   if (existing.kind === 'question') {
@@ -245,13 +252,13 @@ export async function updateEvent(id: string, request: Request, env: Env): Promi
        enc = COALESCE(?9, enc),
        updated_at = ?10,
        read_at = NULL
-     WHERE id = ?11`,
+     WHERE id = ?11 AND account_id = ?12`,
   )
-    .bind(title, kind, priority, blocksJson, project, task, model, tags, encVal, now(), id)
+    .bind(title, kind, priority, blocksJson, project, task, model, tags, encVal, now(), id, accountId)
     .run()
 
   if (body.notify === true) {
-    await pushToAll(env, {
+    await pushToAll(env, accountId, {
       title: title ?? 'Update',
       body: encVal === 1 ? '🔒 Encrypted — open to view' : blocks ? previewText(blocks) : 'Progress updated.',
       tag: existing.task_id || id,
@@ -260,11 +267,11 @@ export async function updateEvent(id: string, request: Request, env: Env): Promi
       priority,
     })
   }
-  await pokeHub(env)
+  await pokeHub(env, accountId)
   return json({ ok: true, id })
 }
 
-export async function createQuestion(request: Request, env: Env): Promise<Response> {
+export async function createQuestion(request: Request, env: Env, accountId: string): Promise<Response> {
   let body: Record<string, unknown>
   try {
     body = (await request.json()) as Record<string, unknown>
@@ -292,9 +299,9 @@ export async function createQuestion(request: Request, env: Env): Promise<Respon
   const ack = typeof body.ack === 'string' && body.ack.trim() ? body.ack.trim().slice(0, 500) : null
   const batch = [
     env.DB.prepare(
-      `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at, project, task, model, tags, enc, ack)
-       VALUES (?1, ?2, ?3, 'question', ?4, ?5, 2, ?6, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`,
-    ).bind(id, agent, taskId, title, norm.blocks, t, t + retentionMs(env), meta.project, meta.task, meta.model, meta.tags, norm.enc, ack),
+      `INSERT INTO events (id, account_id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at, project, task, model, tags, enc, ack)
+       VALUES (?1, ?2, ?3, ?4, 'question', ?5, ?6, 2, ?7, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`,
+    ).bind(id, accountId, agent, taskId, title, norm.blocks, t, t + retentionMs(env), meta.project, meta.task, meta.model, meta.tags, norm.enc, ack),
     env.DB.prepare(
       `INSERT INTO questions (event_id, status, timeout_at) VALUES (?1, 'pending', ?2)`,
     ).bind(id, timeoutAt),
@@ -306,19 +313,20 @@ export async function createQuestion(request: Request, env: Env): Promise<Respon
     blocks: norm.blocks, priority: 2, created_at: t, read_at: null,
     expires_at: t + retentionMs(env), project: meta.project, enc: norm.enc,
   }
-  await maybePush(env, event)
-  await pokeHub(env)
+  await maybePush(env, accountId, event)
+  await pokeHub(env, accountId)
   return json({ ok: true, id, poll_url: `/api/v1/questions/${id}`, timeout_at: timeoutAt })
 }
 
 // Agent polls this. Also lazily expires the question if its deadline passed, so
 // a waiting agent gets a definitive answer instead of hanging forever.
-export async function getQuestion(id: string, env: Env): Promise<Response> {
+export async function getQuestion(id: string, env: Env, accountId: string): Promise<Response> {
   const q = await env.DB.prepare(
     `SELECT q.status, q.answer, q.answered_at, q.timeout_at, q.picked_up_at, e.enc
-     FROM questions q JOIN events e ON e.id = q.event_id WHERE q.event_id = ?1`,
+     FROM questions q JOIN events e ON e.id = q.event_id
+     WHERE q.event_id = ?1 AND e.account_id = ?2`,
   )
-    .bind(id)
+    .bind(id, accountId)
     .first<{
       status: string
       answer: string | null
@@ -342,7 +350,7 @@ export async function getQuestion(id: string, env: Env): Promise<Response> {
     await env.DB.prepare('UPDATE questions SET picked_up_at = ?1 WHERE event_id = ?2')
       .bind(now(), id)
       .run()
-    await pokeHub(env)
+    await pokeHub(env, accountId)
   }
 
   // Encrypted answers are ciphertext strings — pass through for the agent to
@@ -352,25 +360,25 @@ export async function getQuestion(id: string, env: Env): Promise<Response> {
 }
 
 // Agent reads its recent events (dedupe / resume after a crash).
-export async function getInbox(url: URL, env: Env): Promise<Response> {
+export async function getInbox(url: URL, env: Env, accountId: string): Promise<Response> {
   const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit') ?? '30') | 0))
   const agent = url.searchParams.get('agent')
   const q = agent
     ? env.DB.prepare(
         `SELECT id, agent, task_id, kind, title, priority, created_at, project, task, model FROM events
-         WHERE agent = ?1 ORDER BY created_at DESC LIMIT ?2`,
-      ).bind(agent, limit)
+         WHERE account_id = ?1 AND agent = ?2 ORDER BY created_at DESC LIMIT ?3`,
+      ).bind(accountId, agent, limit)
     : env.DB.prepare(
         `SELECT id, agent, task_id, kind, title, priority, created_at, project, task, model FROM events
-         ORDER BY created_at DESC LIMIT ?1`,
-      ).bind(limit)
+         WHERE account_id = ?1 ORDER BY created_at DESC LIMIT ?2`,
+      ).bind(accountId, limit)
   const { results } = await q.all()
   return json({ ok: true, events: results ?? [] })
 }
 
 // Project cards for the landing page: which models are active, how many tasks
 // need action, last activity. Sorted so projects needing you float to the top.
-export async function getProjects(env: Env): Promise<Response> {
+export async function getProjects(env: Env, accountId: string): Promise<Response> {
   const { results } = await env.DB.prepare(
     `SELECT
        COALESCE(e.project, '') AS project,
@@ -380,9 +388,12 @@ export async function getProjects(env: Env): Promise<Response> {
        MAX(e.created_at) AS last_activity,
        GROUP_CONCAT(DISTINCT e.model) AS models
      FROM events e LEFT JOIN questions q ON q.event_id = e.id
+     WHERE e.account_id = ?1
      GROUP BY COALESCE(e.project, '')
      ORDER BY pending DESC, last_activity DESC`,
-  ).all<{ project: string; total: number; unread: number; pending: number; last_activity: number; models: string | null }>()
+  )
+    .bind(accountId)
+    .all<{ project: string; total: number; unread: number; pending: number; last_activity: number; models: string | null }>()
   const projects = (results ?? []).map((r) => ({
     project: r.project,
     total: r.total,
@@ -400,15 +411,15 @@ const THREAD_KEY_SQL = `COALESCE(NULLIF(e.task_id, ''), e.id)`
 
 // Task threads within a project. Groups events by thread key in JS (small,
 // single-user data), summarizing each thread for the project view.
-export async function getTasks(project: string, env: Env): Promise<Response> {
+export async function getTasks(project: string, env: Env, accountId: string): Promise<Response> {
   const { results } = await env.DB.prepare(
     `SELECT e.*, ${THREAD_KEY_SQL} AS thread_key,
        q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout, q.picked_up_at AS q_picked
      FROM events e LEFT JOIN questions q ON q.event_id = e.id
-     WHERE COALESCE(e.project, '') = ?1
+     WHERE e.account_id = ?1 AND COALESCE(e.project, '') = ?2
      ORDER BY e.created_at ASC`,
   )
-    .bind(project)
+    .bind(accountId, project)
     .all<Record<string, unknown>>()
 
   const threads = new Map<string, any>()
@@ -458,14 +469,14 @@ export async function getTasks(project: string, env: Env): Promise<Response> {
 
 // All events in one thread, oldest-first, so the thread view renders the
 // conversation with the active question (if any) at the bottom.
-export async function getThread(project: string, key: string, env: Env): Promise<Response> {
+export async function getThread(project: string, key: string, env: Env, accountId: string): Promise<Response> {
   const { results } = await env.DB.prepare(
     `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout, q.picked_up_at AS q_picked
      FROM events e LEFT JOIN questions q ON q.event_id = e.id
-     WHERE COALESCE(e.project, '') = ?1 AND ${THREAD_KEY_SQL} = ?2
+     WHERE e.account_id = ?1 AND COALESCE(e.project, '') = ?2 AND ${THREAD_KEY_SQL} = ?3
      ORDER BY e.created_at ASC`,
   )
-    .bind(project, key)
+    .bind(accountId, project, key)
     .all()
   const events = (results ?? []).map(hydrate)
   if (events.length === 0) return json({ ok: false, error: 'Thread not found.' }, 404)
@@ -475,32 +486,33 @@ export async function getThread(project: string, key: string, env: Env): Promise
   return json({ ok: true, thread: { key, project, task, events } })
 }
 
-// ── Dashboard endpoints (session cookie) ─────────────────────────────────────
+// ── Dashboard endpoints (session cookie → accountId) ─────────────────────────
 
 // Timestamp-cursor feed for open dashboard tabs. `since_ts` is the newest
 // updated_at the tab already has; we return anything created OR updated after
 // it — so in-place progress updates flow through, not just brand-new events.
 // Ordered by created_at so a card stays put while its progress bar moves.
-export async function getFeed(url: URL, env: Env): Promise<Response> {
+export async function getFeed(url: URL, env: Env, accountId: string): Promise<Response> {
   const sinceTs = Number(url.searchParams.get('since_ts') ?? '0') || 0
   const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') ?? '100') | 0))
   const rows = await env.DB.prepare(
     `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout, q.picked_up_at AS q_picked
      FROM events e LEFT JOIN questions q ON q.event_id = e.id
-     WHERE COALESCE(e.updated_at, e.created_at) > ?1
-     ORDER BY e.created_at DESC LIMIT ?2`,
+     WHERE e.account_id = ?1 AND COALESCE(e.updated_at, e.created_at) > ?2
+     ORDER BY e.created_at DESC LIMIT ?3`,
   )
-    .bind(sinceTs, limit)
+    .bind(accountId, sinceTs, limit)
     .all()
   return json({ ok: true, events: (rows.results ?? []).map(hydrate) })
 }
 
-export async function getEvent(id: string, env: Env): Promise<Response> {
+export async function getEvent(id: string, env: Env, accountId: string): Promise<Response> {
   const row = await env.DB.prepare(
     `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout, q.picked_up_at AS q_picked
-     FROM events e LEFT JOIN questions q ON q.event_id = e.id WHERE e.id = ?1`,
+     FROM events e LEFT JOIN questions q ON q.event_id = e.id
+     WHERE e.id = ?1 AND e.account_id = ?2`,
   )
-    .bind(id)
+    .bind(id, accountId)
     .first()
   if (!row) return json({ ok: false, error: 'Not found.' }, 404)
   return json({ ok: true, event: hydrate(row) })
@@ -540,42 +552,47 @@ function hydrate(row: Record<string, unknown>): Record<string, unknown> {
   }
 }
 
-export async function markRead(id: string, env: Env): Promise<Response> {
-  await env.DB.prepare('UPDATE events SET read_at = ?1 WHERE id = ?2 AND read_at IS NULL')
-    .bind(now(), id)
+export async function markRead(id: string, env: Env, accountId: string): Promise<Response> {
+  await env.DB.prepare('UPDATE events SET read_at = ?1 WHERE id = ?2 AND account_id = ?3 AND read_at IS NULL')
+    .bind(now(), id, accountId)
     .run()
   return json({ ok: true })
 }
 
-export async function markAllRead(env: Env): Promise<Response> {
-  await env.DB.prepare('UPDATE events SET read_at = ?1 WHERE read_at IS NULL').bind(now()).run()
+export async function markAllRead(env: Env, accountId: string): Promise<Response> {
+  await env.DB.prepare('UPDATE events SET read_at = ?1 WHERE account_id = ?2 AND read_at IS NULL')
+    .bind(now(), accountId)
+    .run()
   return json({ ok: true })
 }
 
 // Bring an item back to the top by marking it unread again.
-export async function markUnread(id: string, env: Env): Promise<Response> {
-  await env.DB.prepare('UPDATE events SET read_at = NULL WHERE id = ?1').bind(id).run()
+export async function markUnread(id: string, env: Env, accountId: string): Promise<Response> {
+  await env.DB.prepare('UPDATE events SET read_at = NULL WHERE id = ?1 AND account_id = ?2')
+    .bind(id, accountId)
+    .run()
   return json({ ok: true })
 }
 
 // Clear the inbox. scope:
 //   'read'    — only items already seen/answered (safe default; keeps unread + pending)
 //   'all'     — everything, including unanswered questions (a full restart)
-// Optionally scoped to a single project.
+// Optionally scoped to a single project. Always scoped to the account.
 export async function clearEvents(
   env: Env,
+  accountId: string,
   scope: 'read' | 'all',
   project?: string | null,
 ): Promise<Response> {
-  const projFilter = project != null ? `COALESCE(project, '') = ?1` : null
-  const bind = project != null ? [project] : []
-
-  let where: string
-  if (scope === 'all') {
-    where = projFilter ?? '1=1'
-  } else {
-    where = projFilter ? `read_at IS NOT NULL AND ${projFilter}` : 'read_at IS NOT NULL'
+  // account_id is always ?1; project (when present) is ?2.
+  const clauses = ['account_id = ?1']
+  const bind: unknown[] = [accountId]
+  if (project != null) {
+    clauses.push(`COALESCE(project, '') = ?2`)
+    bind.push(project)
   }
+  if (scope !== 'all') clauses.push('read_at IS NOT NULL')
+  const where = clauses.join(' AND ')
 
   const countRow = await env.DB.prepare(`SELECT COUNT(*) AS n FROM events WHERE ${where}`)
     .bind(...bind)
@@ -585,15 +602,15 @@ export async function clearEvents(
     env.DB.prepare(`DELETE FROM questions WHERE event_id IN (SELECT id FROM events WHERE ${where})`).bind(...bind),
     env.DB.prepare(`DELETE FROM events WHERE ${where}`).bind(...bind),
   ])
-  await pokeHub(env)
+  await pokeHub(env, accountId)
   return json({ ok: true, cleared: countRow?.n ?? 0 })
 }
 
 // You answer a question in the UI. Validate the answer against the question's
 // own interactive blocks so a stale/garbage submit can't land.
-export async function answerQuestion(id: string, request: Request, env: Env): Promise<Response> {
-  const event = await env.DB.prepare('SELECT blocks, enc FROM events WHERE id = ?1 AND kind = ?2')
-    .bind(id, 'question')
+export async function answerQuestion(id: string, request: Request, env: Env, accountId: string): Promise<Response> {
+  const event = await env.DB.prepare('SELECT blocks, enc FROM events WHERE id = ?1 AND account_id = ?2 AND kind = ?3')
+    .bind(id, accountId, 'question')
     .first<{ blocks: string; enc: number }>()
   if (!event) return json({ ok: false, error: 'Unknown question.' }, 404)
 
@@ -624,7 +641,7 @@ export async function answerQuestion(id: string, request: Request, env: Env): Pr
     await env.DB.prepare('UPDATE events SET read_at = COALESCE(read_at, ?1) WHERE id = ?2')
       .bind(now(), id)
       .run()
-    await pokeHub(env)
+    await pokeHub(env, accountId)
     return json({ ok: true })
   }
 
@@ -658,12 +675,12 @@ export async function answerQuestion(id: string, request: Request, env: Env): Pr
   await env.DB.prepare('UPDATE events SET read_at = COALESCE(read_at, ?1) WHERE id = ?2')
     .bind(now(), id)
     .run()
-  await pokeHub(env)
+  await pokeHub(env, accountId)
   return json({ ok: true })
 }
 
 // ── Push subscription management (session) ───────────────────────────────────
-export async function subscribePush(request: Request, env: Env): Promise<Response> {
+export async function subscribePush(request: Request, env: Env, accountId: string): Promise<Response> {
   let sub: PushSubscription
   try {
     sub = (await request.json()) as PushSubscription
@@ -673,16 +690,18 @@ export async function subscribePush(request: Request, env: Env): Promise<Respons
   if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) {
     return json({ ok: false, error: 'Malformed subscription.' }, 400)
   }
+  // endpoint is globally unique; ON CONFLICT re-homes it to the current account
+  // (e.g. a shared device that logs into a different account).
   await env.DB.prepare(
-    `INSERT INTO push_subscriptions (id, endpoint, keys, created_at) VALUES (?1, ?2, ?3, ?4)
-     ON CONFLICT(endpoint) DO UPDATE SET keys = excluded.keys`,
+    `INSERT INTO push_subscriptions (id, account_id, endpoint, keys, created_at) VALUES (?1, ?2, ?3, ?4, ?5)
+     ON CONFLICT(endpoint) DO UPDATE SET keys = excluded.keys, account_id = excluded.account_id`,
   )
-    .bind(ulid(), sub.endpoint, JSON.stringify(sub.keys), now())
+    .bind(ulid(), accountId, sub.endpoint, JSON.stringify(sub.keys), now())
     .run()
   return json({ ok: true })
 }
 
-export async function unsubscribePush(request: Request, env: Env): Promise<Response> {
+export async function unsubscribePush(request: Request, env: Env, accountId: string): Promise<Response> {
   let body: { endpoint?: string }
   try {
     body = (await request.json()) as { endpoint?: string }
@@ -690,18 +709,20 @@ export async function unsubscribePush(request: Request, env: Env): Promise<Respo
     return json({ ok: false, error: 'Invalid JSON.' }, 400)
   }
   if (body.endpoint) {
-    await env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?1').bind(body.endpoint).run()
+    await env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?1 AND account_id = ?2')
+      .bind(body.endpoint, accountId)
+      .run()
   }
   return json({ ok: true })
 }
 
 // ── Settings (session) ───────────────────────────────────────────────────────
-export async function getSettings(env: Env): Promise<Response> {
-  const quiet = await getSetting(env, 'quiet_hours')
+export async function getSettings(env: Env, accountId: string): Promise<Response> {
+  const quiet = await getSetting(env, accountId, 'quiet_hours')
   return json({ ok: true, quiet_hours: quiet ? JSON.parse(quiet) : null })
 }
 
-export async function putSettings(request: Request, env: Env): Promise<Response> {
+export async function putSettings(request: Request, env: Env, accountId: string): Promise<Response> {
   let body: Record<string, unknown>
   try {
     body = (await request.json()) as Record<string, unknown>
@@ -709,15 +730,20 @@ export async function putSettings(request: Request, env: Env): Promise<Response>
     return json({ ok: false, error: 'Invalid JSON.' }, 400)
   }
   if ('quiet_hours' in body) {
-    await setSetting(env, 'quiet_hours', JSON.stringify(body.quiet_hours ?? null))
+    await setSetting(env, accountId, 'quiet_hours', JSON.stringify(body.quiet_hours ?? null))
   }
-  return getSettings(env)
+  return getSettings(env, accountId)
 }
 
-export async function getStats(env: Env): Promise<Response> {
-  const unread = await env.DB.prepare('SELECT COUNT(*) AS n FROM events WHERE read_at IS NULL')
+export async function getStats(env: Env, accountId: string): Promise<Response> {
+  const unread = await env.DB.prepare('SELECT COUNT(*) AS n FROM events WHERE account_id = ?1 AND read_at IS NULL')
+    .bind(accountId)
     .first<{ n: number }>()
-  const pending = await env.DB.prepare(`SELECT COUNT(*) AS n FROM questions WHERE status = 'pending'`)
+  const pending = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM questions q JOIN events e ON e.id = q.event_id
+     WHERE e.account_id = ?1 AND q.status = 'pending'`,
+  )
+    .bind(accountId)
     .first<{ n: number }>()
   return json({ ok: true, unread: unread?.n ?? 0, pending_questions: pending?.n ?? 0 })
 }

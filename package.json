@@ -14,7 +14,8 @@
     "db:migrate:local": "wrangler d1 migrations apply agent-dash --local",
     "setup": "node scripts/setup.mjs",
     "login": "node scripts/login.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "publish:prod": "cd cli && npm publish --access public"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.26.0",
