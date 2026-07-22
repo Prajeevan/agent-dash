@@ -62,7 +62,7 @@ export function LockedScreen() {
         <h1 style={{ fontSize: '1.4rem', margin: '0 0 0.5rem' }}>You're logged out</h1>
         <p style={{ color: 'var(--muted)', lineHeight: 1.6 }}>
           Agent Dash opens with a magic link. On the machine where you deployed it, run{' '}
-          <code style={{ background: 'var(--bg-elev2)', padding: '0.15rem 0.4rem', borderRadius: '0.3rem', color: '#c9b6ff' }}>pnpm login</code>{' '}
+          <code style={{ background: 'var(--bg-elev2)', padding: '0.15rem 0.4rem', borderRadius: '0.3rem', color: '#c9b6ff' }}>pnpm run login</code>{' '}
           and open the link it prints on this device.
         </p>
       </div>

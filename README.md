@@ -52,7 +52,7 @@ pnpm setup            # generates keys, sets secrets, migrates DB, deploys
 1. Open the magic link **on your phone** → **Add to Home Screen** → open the app → **Settings → Enable notifications**.
 2. Give an agent the MCP snippet or the [skill](skills/agent-dash/SKILL.md).
 
-Re-run `pnpm login` any time for a fresh 15-minute login link. Re-run
+Re-run `pnpm run login` any time for a fresh 15-minute login link. Re-run
 `pnpm setup --rotate` to regenerate all keys.
 
 ## Connect an agent

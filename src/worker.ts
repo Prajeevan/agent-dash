@@ -161,5 +161,5 @@ background:#0a0a0f;color:#e8e8f0;font-family:system-ui,sans-serif;text-align:cen
 code{background:#1a1a24;padding:.15rem .4rem;border-radius:.3rem;color:#c9b6ff}</style></head>
 <body><div class="card"><h1>This link has expired</h1>
 <p>Magic links last 15 minutes. Generate a fresh one from your machine with
-<code>pnpm login</code> and open it on this device.</p></div></body></html>`
+<code>pnpm run login</code> and open it on this device.</p></div></body></html>`
 }
