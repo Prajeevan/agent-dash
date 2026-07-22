@@ -4,6 +4,7 @@ import { ArrowLeft, Trash2 } from 'lucide-react'
 import { api, AuthError, timeAgo, type TaskSummary } from '../lib/api'
 import { Header, Container, LockedScreen, Spinner } from '../lib/shell'
 import { projectColor, projectLabel, fromParam, KIND_LABEL, KIND_COLOR } from '../lib/project'
+import { useLive } from '../lib/live'
 
 export const Route = createFileRoute('/project/$name')({
   component: ProjectView,
@@ -29,17 +30,9 @@ function ProjectView() {
 
   useEffect(() => {
     load()
-    const tick = () => {
-      if (document.visibilityState === 'visible') load()
-    }
-    const iv = setInterval(tick, 5000)
-    document.addEventListener('visibilitychange', tick)
-    return () => {
-      clearInterval(iv)
-      document.removeEventListener('visibilitychange', tick)
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name])
+  useLive(load)
 
   async function doClear(scope: 'read' | 'all') {
     setClearOpen(false)

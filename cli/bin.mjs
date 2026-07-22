@@ -21,6 +21,7 @@ const { values: flags, positionals } = parseArgs({
     tag: { type: 'string', multiple: true },
     markdown: { type: 'string' },
     button: { type: 'string', multiple: true },
+    ack: { type: 'string' },
     e2e: { type: 'boolean' },
     agent: { type: 'string' },
   },
@@ -138,6 +139,7 @@ async function ask() {
     task_id: flags['task-id'],
     model: flags.model,
     tags: flags.tag,
+    ack: flags.ack,
   }
   await attachBlocks(body, blocks, conf, 'question')
   const { status, json } = await hub('POST', '/api/v1/questions', conf, body)

@@ -13,6 +13,14 @@
   "triggers": {
     "crons": ["0 * * * *"]
   },
+  // Instant mode is OFF by default — the app polls (free tier, no DO usage).
+  // Flip INSTANT to "1" (and keep the binding below) for sub-second live updates
+  // via a hibernating Durable Object. SQLite-backed class = free-plan eligible.
+  "vars": { "INSTANT": "0" },
+  "durable_objects": {
+    "bindings": [{ "name": "HUB", "class_name": "Hub" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Hub"] }],
   "d1_databases": [
     {
       "binding": "DB",

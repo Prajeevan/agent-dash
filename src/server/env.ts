@@ -1,6 +1,7 @@
 export interface Env {
   DB: D1Database
   SESSIONS: KVNamespace
+  HUB: DurableObjectNamespace // instant-mode fan-out (only used when INSTANT=1)
 
   // Secrets (set via `wrangler secret put`)
   AGENT_KEY: string // bearer token agents send on every API/MCP call
@@ -12,4 +13,5 @@ export interface Env {
   // Vars (set in wrangler.jsonc [vars] or left unset for defaults)
   SESSION_TTL_DAYS?: string
   EVENT_RETENTION_DAYS?: string
+  INSTANT?: string // "1" enables the Durable Object live feed (Pro / opt-in)
 }

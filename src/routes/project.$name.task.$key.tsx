@@ -6,6 +6,7 @@ import { Header, Container, LockedScreen, Spinner } from '../lib/shell'
 import { BlockRenderer, AnswerForm } from '../lib/blocks'
 import { projectColor, projectLabel, fromParam, KIND_LABEL, KIND_COLOR } from '../lib/project'
 import { getEncKey, encryptValue, decryptValue } from '../lib/e2e'
+import { useLive } from '../lib/live'
 
 export const Route = createFileRoute('/project/$name/task/$key')({
   component: ThreadView,
@@ -45,17 +46,9 @@ function ThreadView() {
 
   useEffect(() => {
     load()
-    const tick = () => {
-      if (document.visibilityState === 'visible') load()
-    }
-    const iv = setInterval(tick, 5000)
-    document.addEventListener('visibilitychange', tick)
-    return () => {
-      clearInterval(iv)
-      document.removeEventListener('visibilitychange', tick)
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name, key])
+  useLive(load)
 
   async function submit(eventId: string, answer: Record<string, unknown>) {
     setSubmitting(eventId)
@@ -213,9 +206,26 @@ function Message({ e, submitting, error, onSubmit }: { e: EventItem; submitting:
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: 'var(--success)', fontWeight: 600, fontSize: '0.88rem', marginBottom: '0.6rem' }}>
                 ✓ You answered
               </div>
-              <pre style={{ margin: 0, background: 'var(--bg-elev2)', padding: '0.7rem', borderRadius: '0.5rem', fontSize: '0.8rem', overflowX: 'auto', color: 'var(--muted)' }}>
+              <pre style={{ margin: '0 0 0.7rem', background: 'var(--bg-elev2)', padding: '0.7rem', borderRadius: '0.5rem', fontSize: '0.8rem', overflowX: 'auto', color: 'var(--muted)' }}>
                 <code>{formatAnswer(answer)}</code>
               </pre>
+              {q.picked_up_at ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: 'var(--success)', fontSize: '0.82rem', fontWeight: 600 }}>
+                    ✓✓ Agent received it · {timeAgo(q.picked_up_at)}
+                  </div>
+                  {e.ack ? (
+                    <div style={{ borderLeft: '3px solid var(--success)', background: 'var(--bg-elev2)', padding: '0.6rem 0.8rem', borderRadius: '0.4rem', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                      {e.ack.replace(/\{answer\}/g, shortAnswer(answer))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', color: 'var(--warn)', fontSize: '0.82rem' }}>
+                  <span className="live-dot" style={{ width: '0.5rem', height: '0.5rem', borderRadius: '999px', background: 'var(--warn)' }} />
+                  Waiting for the agent to receive your answer…
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ color: 'var(--warn)', fontSize: '0.88rem' }}>Expired before you answered.</div>
@@ -224,6 +234,19 @@ function Message({ e, submitting, error, onSubmit }: { e: EventItem; submitting:
       )}
     </div>
   )
+}
+
+// Short inline form for the ack's {answer} placeholder, e.g. "Ocean" or
+// "audience: VC, tone: Punchy".
+function shortAnswer(answer: unknown): string {
+  if (answer == null) return ''
+  if (typeof answer !== 'object') return String(answer)
+  const parts: string[] = []
+  for (const v of Object.values(answer)) {
+    if (v && typeof v === 'object') for (const fv of Object.values(v as Record<string, unknown>)) parts.push(String(fv))
+    else parts.push(String(v))
+  }
+  return parts.join(', ')
 }
 
 function formatAnswer(answer: unknown): string {

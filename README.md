@@ -134,9 +134,18 @@ VAPID + RFC 8291 on WebCrypto, no Node deps) · Vite · TypeScript.
 
 Dev: `pnpm dev`. Typecheck: `pnpm typecheck`. Deploy: `pnpm run deploy`.
 
+## Instant mode (optional)
+
+Delivery is polling by default (free tier, no Durable Objects). To get
+sub-second live updates instead, flip one flag: set `"INSTANT": "1"` in
+`wrangler.jsonc` and `pnpm run deploy`. That activates a single **hibernating
+Durable Object** — hibernated sockets don't bill duration, so it stays free-tier
+friendly for one user. The dashboard automatically switches from polling to a
+live WebSocket. Set it back to `"0"` to disable.
+
 ## Roadmap
 
-- [ ] Optional "instant mode": one hibernating Durable Object for sub-second delivery without polling (still free-tier compatible).
+- [x] Instant mode via a hibernating Durable Object (opt-in flag above).
 - [ ] Capacitor shell for native app-store builds where PWA push is inconvenient.
 - [ ] More block types (charts, diffs) — PRs welcome (raw-HTML blocks will be declined by design).
 

@@ -5,6 +5,7 @@ import { api, AuthError, timeAgo, type ProjectRow } from '../lib/api'
 import { Header, Container, LockedScreen, Spinner } from '../lib/shell'
 import { projectColor, projectLabel, toParam } from '../lib/project'
 import { captureKeyFromHash } from '../lib/e2e'
+import { useLive } from '../lib/live'
 
 export const Route = createFileRoute('/')({
   component: Projects,
@@ -28,16 +29,9 @@ function Projects() {
   useEffect(() => {
     captureKeyFromHash() // login QR may carry the E2E key in the URL fragment
     load()
-    const tick = () => {
-      if (document.visibilityState === 'visible') load()
-    }
-    const iv = setInterval(tick, 5000)
-    document.addEventListener('visibilitychange', tick)
-    return () => {
-      clearInterval(iv)
-      document.removeEventListener('visibilitychange', tick)
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  useLive(load) // WebSocket in instant mode, else 5s polling
 
   if (state === 'loading') return <Spinner />
   if (state === 'locked') return <LockedScreen />

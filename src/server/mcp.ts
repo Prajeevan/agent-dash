@@ -60,6 +60,11 @@ const TOOLS = [
         task: { type: 'string', description: 'Current task, e.g. "Adding children mode".' },
         model: { type: 'string', description: 'Which model you are.' },
         tags: { type: 'array', description: 'Optional freeform tags.' },
+        ack: {
+          type: 'string',
+          description:
+            'Optional acknowledgment shown to the human the instant they answer, e.g. "Got it — proceeding with {answer}. Watch for updates." Use {answer} as a placeholder for their choice.',
+        },
         blocks: {
           type: 'array',
           description:

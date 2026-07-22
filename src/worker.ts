@@ -37,6 +37,8 @@ import { handleMcp } from './server/mcp'
 import { blockSchemaDoc, openApiDoc } from './server/docs'
 import { runCron } from './server/cron'
 
+export { Hub } from './server/hub'
+
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET,POST,OPTIONS',
@@ -65,6 +67,18 @@ export default {
     // The browser needs the VAPID public key to subscribe — safe to expose.
     if (path === '/api/v1/push/vapid' && method === 'GET') {
       return json({ ok: true, key: env.VAPID_PUBLIC_KEY ?? '' }, 200, CORS)
+    }
+    // Lets the client pick its transport (live WebSocket vs polling). Not secret.
+    // no-store so a flip of INSTANT is never served from a stale edge cache.
+    if (path === '/api/v1/config' && method === 'GET') {
+      return json({ ok: true, instant: env.INSTANT === '1' }, 200, { ...CORS, 'cache-control': 'no-store' })
+    }
+
+    // ── Instant-mode live feed: upgrade to the Hub Durable Object ──
+    if (path === '/ws') {
+      if (env.INSTANT !== '1') return new Response('Instant mode disabled.', { status: 404 })
+      if (!(await isLoggedIn(request, env))) return unauthorized()
+      return env.HUB.get(env.HUB.idFromName('main')).fetch(request)
     }
 
     // ── MCP (bearer AGENT_KEY) ──

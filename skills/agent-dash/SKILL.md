@@ -81,6 +81,7 @@ curl -X POST "$AGENT_DASH_URL/api/v1/questions" \
     "agent": "claude-code",
     "title": "Which audience should the deck target?",
     "timeout_minutes": 120,
+    "ack": "Got it — building for {answer}. Watch this thread for updates.",
     "blocks": [
       { "type": "markdown", "text": "Research is done. Pick the framing and I'll draft it." },
       { "type": "form", "id": "deck", "submitLabel": "Build it", "fields": [
@@ -123,6 +124,11 @@ curl "$AGENT_DASH_URL/api/v1/questions/01J..." \
 The `answer` object is keyed by block id. A `buttons` block answers with the
 chosen string (`{ "confirm": "Deploy" }`); a `form` block answers with an object
 of `{ fieldId: value }`.
+
+**Delivery receipt.** When your poll returns `answered`, the human's screen
+automatically flips from "waiting for the agent…" to "agent received it" and
+shows your `ack` message. So keep polling promptly after they might answer — the
+poll is what confirms receipt to them.
 
 ## Blocks reference
 

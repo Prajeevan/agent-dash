@@ -2,6 +2,7 @@ import type { Env } from './env'
 import { json, ulid, now } from './util'
 import { BlocksSchema, hasInteractive, answerTargets, type Block } from './blocks'
 import { pushToAll, type PushSubscription } from './push'
+import { pokeHub } from './hub'
 
 // ── retention / settings helpers ─────────────────────────────────────────────
 function retentionMs(env: Env): number {
@@ -177,6 +178,7 @@ export async function createEvent(request: Request, env: Env): Promise<Response>
     expires_at: t + retentionMs(env), project: meta.project, enc: norm.enc,
   }
   await maybePush(env, event)
+  await pokeHub(env)
   return json({ ok: true, id })
 }
 
@@ -258,6 +260,7 @@ export async function updateEvent(id: string, request: Request, env: Env): Promi
       priority,
     })
   }
+  await pokeHub(env)
   return json({ ok: true, id })
 }
 
@@ -286,11 +289,12 @@ export async function createQuestion(request: Request, env: Env): Promise<Respon
   const t = now()
   const timeoutAt = t + timeoutMin * 60_000
 
+  const ack = typeof body.ack === 'string' && body.ack.trim() ? body.ack.trim().slice(0, 500) : null
   const batch = [
     env.DB.prepare(
-      `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at, project, task, model, tags, enc)
-       VALUES (?1, ?2, ?3, 'question', ?4, ?5, 2, ?6, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`,
-    ).bind(id, agent, taskId, title, norm.blocks, t, t + retentionMs(env), meta.project, meta.task, meta.model, meta.tags, norm.enc),
+      `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at, project, task, model, tags, enc, ack)
+       VALUES (?1, ?2, ?3, 'question', ?4, ?5, 2, ?6, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`,
+    ).bind(id, agent, taskId, title, norm.blocks, t, t + retentionMs(env), meta.project, meta.task, meta.model, meta.tags, norm.enc, ack),
     env.DB.prepare(
       `INSERT INTO questions (event_id, status, timeout_at) VALUES (?1, 'pending', ?2)`,
     ).bind(id, timeoutAt),
@@ -303,6 +307,7 @@ export async function createQuestion(request: Request, env: Env): Promise<Respon
     expires_at: t + retentionMs(env), project: meta.project, enc: norm.enc,
   }
   await maybePush(env, event)
+  await pokeHub(env)
   return json({ ok: true, id, poll_url: `/api/v1/questions/${id}`, timeout_at: timeoutAt })
 }
 
@@ -310,10 +315,18 @@ export async function createQuestion(request: Request, env: Env): Promise<Respon
 // a waiting agent gets a definitive answer instead of hanging forever.
 export async function getQuestion(id: string, env: Env): Promise<Response> {
   const q = await env.DB.prepare(
-    `SELECT status, answer, answered_at, timeout_at FROM questions WHERE event_id = ?1`,
+    `SELECT q.status, q.answer, q.answered_at, q.timeout_at, q.picked_up_at, e.enc
+     FROM questions q JOIN events e ON e.id = q.event_id WHERE q.event_id = ?1`,
   )
     .bind(id)
-    .first<{ status: string; answer: string | null; answered_at: number | null; timeout_at: number }>()
+    .first<{
+      status: string
+      answer: string | null
+      answered_at: number | null
+      timeout_at: number
+      picked_up_at: number | null
+      enc: number
+    }>()
 
   if (!q) return json({ ok: false, error: 'Unknown question id.' }, 404)
 
@@ -322,12 +335,20 @@ export async function getQuestion(id: string, env: Env): Promise<Response> {
     return json({ ok: true, status: 'expired' })
   }
 
-  return json({
-    ok: true,
-    status: q.status,
-    answer: q.answer ? JSON.parse(q.answer) : null,
-    answered_at: q.answered_at,
-  })
+  // The agent is receiving the answer right now — stamp the delivery receipt
+  // (once) so the human's screen can flip to "agent received it", and nudge the
+  // live feed so that update is instant.
+  if (q.status === 'answered' && q.picked_up_at == null) {
+    await env.DB.prepare('UPDATE questions SET picked_up_at = ?1 WHERE event_id = ?2')
+      .bind(now(), id)
+      .run()
+    await pokeHub(env)
+  }
+
+  // Encrypted answers are ciphertext strings — pass through for the agent to
+  // decrypt; plaintext answers are JSON.
+  const answer = q.answer ? (q.enc === 1 ? q.answer : JSON.parse(q.answer)) : null
+  return json({ ok: true, status: q.status, answer, answered_at: q.answered_at })
 }
 
 // Agent reads its recent events (dedupe / resume after a crash).
@@ -382,7 +403,7 @@ const THREAD_KEY_SQL = `COALESCE(NULLIF(e.task_id, ''), e.id)`
 export async function getTasks(project: string, env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(
     `SELECT e.*, ${THREAD_KEY_SQL} AS thread_key,
-       q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout
+       q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout, q.picked_up_at AS q_picked
      FROM events e LEFT JOIN questions q ON q.event_id = e.id
      WHERE COALESCE(e.project, '') = ?1
      ORDER BY e.created_at ASC`,
@@ -439,7 +460,7 @@ export async function getTasks(project: string, env: Env): Promise<Response> {
 // conversation with the active question (if any) at the bottom.
 export async function getThread(project: string, key: string, env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(
-    `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout
+    `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout, q.picked_up_at AS q_picked
      FROM events e LEFT JOIN questions q ON q.event_id = e.id
      WHERE COALESCE(e.project, '') = ?1 AND ${THREAD_KEY_SQL} = ?2
      ORDER BY e.created_at ASC`,
@@ -464,7 +485,7 @@ export async function getFeed(url: URL, env: Env): Promise<Response> {
   const sinceTs = Number(url.searchParams.get('since_ts') ?? '0') || 0
   const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') ?? '100') | 0))
   const rows = await env.DB.prepare(
-    `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout
+    `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout, q.picked_up_at AS q_picked
      FROM events e LEFT JOIN questions q ON q.event_id = e.id
      WHERE COALESCE(e.updated_at, e.created_at) > ?1
      ORDER BY e.created_at DESC LIMIT ?2`,
@@ -476,7 +497,7 @@ export async function getFeed(url: URL, env: Env): Promise<Response> {
 
 export async function getEvent(id: string, env: Env): Promise<Response> {
   const row = await env.DB.prepare(
-    `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout
+    `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout, q.picked_up_at AS q_picked
      FROM events e LEFT JOIN questions q ON q.event_id = e.id WHERE e.id = ?1`,
   )
     .bind(id)
@@ -508,12 +529,13 @@ function hydrate(row: Record<string, unknown>): Record<string, unknown> {
     task: row.task ?? null,
     model: row.model ?? null,
     tags: JSON.parse((row.tags as string) || '[]'),
+    ack: row.ack ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at ?? row.created_at,
     read_at: row.read_at,
     question:
       row.q_status != null
-        ? { status: row.q_status, answer, timeout_at: row.q_timeout }
+        ? { status: row.q_status, answer, timeout_at: row.q_timeout, picked_up_at: row.q_picked ?? null }
         : null,
   }
 }
@@ -563,6 +585,7 @@ export async function clearEvents(
     env.DB.prepare(`DELETE FROM questions WHERE event_id IN (SELECT id FROM events WHERE ${where})`).bind(...bind),
     env.DB.prepare(`DELETE FROM events WHERE ${where}`).bind(...bind),
   ])
+  await pokeHub(env)
   return json({ ok: true, cleared: countRow?.n ?? 0 })
 }
 
@@ -601,6 +624,7 @@ export async function answerQuestion(id: string, request: Request, env: Env): Pr
     await env.DB.prepare('UPDATE events SET read_at = COALESCE(read_at, ?1) WHERE id = ?2')
       .bind(now(), id)
       .run()
+    await pokeHub(env)
     return json({ ok: true })
   }
 
@@ -634,6 +658,7 @@ export async function answerQuestion(id: string, request: Request, env: Env): Pr
   await env.DB.prepare('UPDATE events SET read_at = COALESCE(read_at, ?1) WHERE id = ?2')
     .bind(now(), id)
     .run()
+  await pokeHub(env)
   return json({ ok: true })
 }
 

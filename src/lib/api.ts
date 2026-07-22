@@ -4,6 +4,7 @@ export interface QuestionState {
   status: 'pending' | 'answered' | 'expired'
   answer: Record<string, unknown> | string | null // string = ciphertext when enc
   timeout_at: number
+  picked_up_at: number | null // set once the agent has received the answer
 }
 
 export interface EventItem {
@@ -19,6 +20,7 @@ export interface EventItem {
   task: string | null
   model: string | null
   tags: string[]
+  ack: string | null
   created_at: number
   updated_at: number
   read_at: number | null
