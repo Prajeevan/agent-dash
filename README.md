@@ -73,9 +73,17 @@ locally in your terminal — the magic-link token never leaves your machine). Re
 
 Tools: `notify(title, blocks?, priority?)`, `ask(title, blocks)`, `wait_for_answer(question_id)`.
 
-**Skill / curl** (anything that can make an HTTP request, including a raw chat) —
-paste [`skills/agent-dash/SKILL.md`](skills/agent-dash/SKILL.md) and your URL +
-key. Or the one-liner:
+**Skill** — install it into any Agent-Skills runtime (Claude Code, Cursor,
+Codex, …) straight from GitHub:
+
+```bash
+npx skills add YOUR_NAME/agent-dash
+```
+
+This drops `skills/agent-dash/SKILL.md` into your agent so it knows how to reach
+your hub; then give it your URL + `AGENT_KEY`.
+
+**curl** (anything that can make an HTTP request, including a raw chat) — the one-liner:
 
 ```bash
 curl -X POST "$AGENT_DASH_URL/api/v1/events" \

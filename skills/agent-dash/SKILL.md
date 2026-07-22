@@ -1,12 +1,7 @@
 ---
 name: agent-dash
-description: >
-  Reach the human through Agent Dash — a personal push inbox. Use it to send
-  progress updates that land as phone notifications, and to ask a question and
-  WAIT for the answer before continuing. Trigger whenever you hit a milestone
-  worth reporting, finish a long task, hit an error the human should see, or
-  reach a decision point where you genuinely need the human to choose before you
-  proceed (which option, approve/reject, fill in details).
+description: Reach the human through Agent Dash — a personal push inbox. Send progress updates that land as phone notifications, and ask a question then WAIT for the answer before continuing. Use when you hit a milestone, finish a long task, hit an error the human should see, or reach a decision point where you need the human to choose (which option, approve/reject, fill in details) before proceeding.
+license: MIT
 ---
 
 # Agent Dash
