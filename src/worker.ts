@@ -37,6 +37,7 @@ import {
   getTasks,
   getThread,
 } from './server/api'
+import { EmailCapError } from './server/email'
 import { handleMcp } from './server/mcp'
 import { blockSchemaDoc, openApiDoc } from './server/docs'
 import { runCron } from './server/cron'
@@ -97,8 +98,17 @@ export default {
         const ip = request.headers.get('cf-connecting-ip') ?? ''
         await requestLoginCode(env, email, ip)
       } catch (e) {
-        // A send failure (bad Resend key / unverified domain) is worth surfacing
-        // to the operator in logs, but not to the caller.
+        // The daily email quota is a global cap (not account-specific), so
+        // telling the caller leaks nothing — and it's far better than a silent
+        // "code sent" that never arrives.
+        if (e instanceof EmailCapError) {
+          return json(
+            { ok: false, error: "We've hit today's sign-in email limit. Please try again tomorrow." },
+            429,
+          )
+        }
+        // Other send failures (bad key / unverified domain) → log for the
+        // operator, but stay generic to the caller (no enumeration).
         console.error('OTP send failed:', (e as Error).message)
       }
       return json({ ok: true })

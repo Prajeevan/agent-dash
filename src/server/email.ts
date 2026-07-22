@@ -7,6 +7,16 @@ import type { Env } from './env'
 
 const DEFAULT_FROM = 'Agent Dash <onboarding@resend.dev>'
 
+// Thrown when Resend rejects the send because the account's daily/monthly email
+// quota is exhausted (free tier is 100/day). Distinct from other failures so the
+// caller can tell the human "capped for today" instead of a generic error.
+export class EmailCapError extends Error {
+  constructor() {
+    super('email quota exceeded')
+    this.name = 'EmailCapError'
+  }
+}
+
 export async function sendOtpEmail(env: Env, to: string, code: string): Promise<void> {
   if (!env.RESEND_API_KEY) {
     // Dev bypass — no external send. The verify endpoint still checks this code.
@@ -32,6 +42,12 @@ export async function sendOtpEmail(env: Env, to: string, code: string): Promise<
 
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
+    // Resend returns 429 with name daily_quota_exceeded / monthly_quota_exceeded
+    // when the plan's send quota is used up. Signal that distinctly so the human
+    // gets a "capped for today" message rather than a scary generic failure.
+    if (res.status === 429 && /quota_exceeded/.test(detail)) {
+      throw new EmailCapError()
+    }
     // Surface enough to debug (bad key, unverified domain) without leaking the code.
     throw new Error(`Resend send failed (${res.status}): ${detail.slice(0, 300)}`)
   }
