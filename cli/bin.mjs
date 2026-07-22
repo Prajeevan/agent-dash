@@ -3,7 +3,7 @@ import { parseArgs } from 'node:util'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { createInterface } from 'node:readline/promises'
 import { spawn } from 'node:child_process'
-import { loadConfig, saveConfig, resolve, hub, verify, qr, die, sleep, encrypt, decrypt } from './lib/util.mjs'
+import { loadConfig, saveConfig, resolve, hub, verify, qr, die, sleep, encrypt, decrypt, DEFAULT_URL } from './lib/util.mjs'
 
 const { values: flags, positionals } = parseArgs({
   allowPositionals: true,
@@ -40,7 +40,8 @@ async function prompt(q) {
 async function login() {
   console.log('\nAgent Dash — connect an agent\n')
   const cfg = loadConfig()
-  let url = flags.url || (await prompt(`Hub URL${cfg.url ? ` [${cfg.url}]` : ''}: `)) || cfg.url
+  const urlDefault = cfg.url || DEFAULT_URL
+  let url = flags.url || (await prompt(`Hub URL [${urlDefault}]: `)) || urlDefault
   let key = flags.key || (await prompt('Agent key: ')) || cfg.key
   if (!url || !key) die('Both a hub URL and an agent key are required.')
   url = url.replace(/\/$/, '')

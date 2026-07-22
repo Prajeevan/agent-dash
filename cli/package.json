@@ -1,6 +1,6 @@
 {
   "name": "agentdash",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI for Agent Dash — connect an agent to your hub, log in on your phone, and send updates/questions from scripts.",
   "type": "module",
   "bin": {

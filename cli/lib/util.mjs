@@ -5,6 +5,10 @@ import { randomBytes } from 'node:crypto'
 import qrcode from 'qrcode-terminal'
 
 // ── config ───────────────────────────────────────────────────────────────────
+// The hosted hub. Users on the hosted service don't need to pass --url; a
+// self-hoster overrides it via --url, AGENT_DASH_URL, or saved config.
+export const DEFAULT_URL = 'https://agentdash.mycli.tools'
+
 export const CONFIG_DIR = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'agent-dash')
 export const CONFIG_PATH = join(CONFIG_DIR, 'config.json')
 
@@ -22,11 +26,11 @@ export function saveConfig(cfg) {
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2))
 }
 
-// Resolve url + key from flags → env → saved config.
+// Resolve url + key from flags → env → saved config → hosted default.
 export function resolve(flags = {}) {
   const cfg = loadConfig()
   return {
-    url: (flags.url || process.env.AGENT_DASH_URL || cfg.url || '').replace(/\/$/, ''),
+    url: (flags.url || process.env.AGENT_DASH_URL || cfg.url || DEFAULT_URL).replace(/\/$/, ''),
     key: flags.key || process.env.AGENT_KEY || cfg.key || '',
     encKey: flags['enc-key'] || process.env.AGENT_DASH_ENC_KEY || cfg.encKey || '',
   }

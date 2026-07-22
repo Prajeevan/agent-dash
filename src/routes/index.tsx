@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Settings2, ChevronRight, Inbox as InboxIcon } from 'lucide-react'
 import { api, AuthError, timeAgo, type ProjectRow } from '../lib/api'
-import { Header, Container, LockedScreen, Spinner } from '../lib/shell'
+import { Header, Container, Landing, Spinner } from '../lib/shell'
 import { projectColor, projectLabel, toParam } from '../lib/project'
 import { captureKeyFromHash } from '../lib/e2e'
 import { useLive } from '../lib/live'
@@ -34,7 +34,7 @@ function Projects() {
   useLive(load) // WebSocket in instant mode, else 5s polling
 
   if (state === 'loading') return <Spinner />
-  if (state === 'locked') return <LockedScreen />
+  if (state === 'locked') return <Landing />
 
   const waiting = projects.filter((p) => p.pending > 0)
   const rest = projects.filter((p) => p.pending === 0)
