@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ProRouteImport } from './routes/pro'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as EventIdRouteImport } from './routes/event.$id'
 import { Route as ProjectNameRouteImport } from './routes/project.$name'
@@ -18,6 +19,11 @@ import { Route as ProjectNameTaskKeyRouteImport } from './routes/project.$name.t
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProRoute = ProRouteImport.update({
+  id: '/pro',
+  path: '/pro',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -43,6 +49,7 @@ const ProjectNameTaskKeyRoute = ProjectNameTaskKeyRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/pro': typeof ProRoute
   '/settings': typeof SettingsRoute
   '/event/$id': typeof EventIdRoute
   '/project/$name': typeof ProjectNameRouteWithChildren
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/pro': typeof ProRoute
   '/settings': typeof SettingsRoute
   '/event/$id': typeof EventIdRoute
   '/project/$name': typeof ProjectNameRouteWithChildren
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/pro': typeof ProRoute
   '/settings': typeof SettingsRoute
   '/event/$id': typeof EventIdRoute
   '/project/$name': typeof ProjectNameRouteWithChildren
@@ -67,6 +76,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/pro'
     | '/settings'
     | '/event/$id'
     | '/project/$name'
@@ -74,6 +84,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/pro'
     | '/settings'
     | '/event/$id'
     | '/project/$name'
@@ -81,6 +92,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/pro'
     | '/settings'
     | '/event/$id'
     | '/project/$name'
@@ -89,6 +101,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ProRoute: typeof ProRoute
   SettingsRoute: typeof SettingsRoute
   EventIdRoute: typeof EventIdRoute
   ProjectNameRoute: typeof ProjectNameRouteWithChildren
@@ -101,6 +114,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pro': {
+      id: '/pro'
+      path: '/pro'
+      fullPath: '/pro'
+      preLoaderRoute: typeof ProRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -148,6 +168,7 @@ const ProjectNameRouteWithChildren = ProjectNameRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ProRoute: ProRoute,
   SettingsRoute: SettingsRoute,
   EventIdRoute: EventIdRoute,
   ProjectNameRoute: ProjectNameRouteWithChildren,

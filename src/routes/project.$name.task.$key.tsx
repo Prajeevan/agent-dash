@@ -5,6 +5,7 @@ import { api, AuthError, timeAgo, type ThreadData, type EventItem } from '../lib
 import { Header, Container, LockedScreen, Spinner } from '../lib/shell'
 import { BlockRenderer, AnswerForm } from '../lib/blocks'
 import { projectColor, projectLabel, fromParam, KIND_LABEL, KIND_COLOR } from '../lib/project'
+import { getEncKey, encryptValue, decryptValue } from '../lib/e2e'
 
 export const Route = createFileRoute('/project/$name/task/$key')({
   component: ThreadView,
@@ -122,6 +123,58 @@ function ThreadView() {
 function Message({ e, submitting, error, onSubmit }: { e: EventItem; submitting: boolean; error: string | null; onSubmit: (a: Record<string, unknown>) => void }) {
   const q = e.question
   const isPending = q?.status === 'pending'
+
+  // Decrypt block content (and any answer) locally when the event is E2E.
+  const [dec, setDec] = useState<{ blocks: unknown[]; answer: unknown } | null>(null)
+  const [locked, setLocked] = useState(false)
+  useEffect(() => {
+    if (!e.enc) {
+      setDec({ blocks: e.blocks as unknown[], answer: q?.answer ?? null })
+      return
+    }
+    const key = getEncKey()
+    if (!key) {
+      setLocked(true)
+      return
+    }
+    ;(async () => {
+      try {
+        const blocks = await decryptValue<unknown[]>(key, e.blocks as string)
+        let answer: unknown = null
+        if (q?.answer && typeof q.answer === 'string') answer = await decryptValue(key, q.answer)
+        setDec({ blocks, answer })
+        setLocked(false)
+      } catch {
+        setLocked(true)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [e.id, e.enc, typeof e.blocks === 'string' ? e.blocks : '', typeof q?.answer === 'string' ? q?.answer : ''])
+
+  // For E2E questions, encrypt the answer before it leaves the device.
+  async function handleSubmit(a: Record<string, unknown>) {
+    if (!e.enc) return onSubmit(a)
+    const key = getEncKey()
+    if (!key) return
+    const cipher = await encryptValue(key, a)
+    onSubmit({ enc: true, answer: cipher })
+  }
+
+  const blocks = dec?.blocks ?? []
+  const answer = dec?.answer ?? null
+
+  if (locked) {
+    return (
+      <div style={{ background: 'var(--bg-elev)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '1rem', color: 'var(--muted)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.4rem' }}>
+          <span style={{ fontSize: '0.68rem', fontWeight: 650, textTransform: 'uppercase', letterSpacing: '0.04em', color: KIND_COLOR[e.kind] }}>{KIND_LABEL[e.kind]}</span>
+          <span style={{ fontSize: '0.76rem', color: 'var(--faint)', marginLeft: 'auto' }}>{timeAgo(e.created_at)}</span>
+        </div>
+        {e.title ? <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>{e.title}</div> : null}
+        🔒 Encrypted. Add your key in <Link to="/settings" style={{ color: 'var(--accent-2)' }}>Settings → Encryption</Link> to read it.
+      </div>
+    )
+  }
   return (
     <div
       style={{
@@ -144,13 +197,15 @@ function Message({ e, submitting, error, onSubmit }: { e: EventItem; submitting:
 
       {e.title ? <div style={{ fontWeight: 600, marginBottom: '0.6rem', lineHeight: 1.4 }}>{e.title}</div> : null}
 
-      <BlockRenderer blocks={e.blocks} />
+      {e.enc ? <span style={{ fontSize: '0.7rem', color: 'var(--success)', marginBottom: '0.5rem', display: 'inline-block' }}>🔒 end-to-end encrypted</span> : null}
+
+      <BlockRenderer blocks={blocks} />
 
       {q && (
         <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
           {isPending ? (
             <>
-              <AnswerForm blocks={e.blocks} disabled={submitting} onSubmit={onSubmit} />
+              <AnswerForm blocks={blocks} disabled={submitting} onSubmit={handleSubmit} />
               {error ? <p style={{ color: 'var(--error)', fontSize: '0.85rem', marginTop: '0.8rem' }}>{error}</p> : null}
             </>
           ) : q.status === 'answered' ? (
@@ -159,7 +214,7 @@ function Message({ e, submitting, error, onSubmit }: { e: EventItem; submitting:
                 ✓ You answered
               </div>
               <pre style={{ margin: 0, background: 'var(--bg-elev2)', padding: '0.7rem', borderRadius: '0.5rem', fontSize: '0.8rem', overflowX: 'auto', color: 'var(--muted)' }}>
-                <code>{formatAnswer(q.answer)}</code>
+                <code>{formatAnswer(answer)}</code>
               </pre>
             </div>
           ) : (
@@ -171,8 +226,8 @@ function Message({ e, submitting, error, onSubmit }: { e: EventItem; submitting:
   )
 }
 
-function formatAnswer(answer: Record<string, unknown> | null): string {
-  if (!answer) return ''
+function formatAnswer(answer: unknown): string {
+  if (!answer || typeof answer !== 'object') return answer ? String(answer) : ''
   // Flatten { blockId: value | {field: value} } into readable lines.
   const lines: string[] = []
   for (const v of Object.values(answer)) {

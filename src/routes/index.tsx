@@ -4,6 +4,7 @@ import { Settings2, ChevronRight, Inbox as InboxIcon } from 'lucide-react'
 import { api, AuthError, timeAgo, type ProjectRow } from '../lib/api'
 import { Header, Container, LockedScreen, Spinner } from '../lib/shell'
 import { projectColor, projectLabel, toParam } from '../lib/project'
+import { captureKeyFromHash } from '../lib/e2e'
 
 export const Route = createFileRoute('/')({
   component: Projects,
@@ -25,6 +26,7 @@ function Projects() {
   }
 
   useEffect(() => {
+    captureKeyFromHash() // login QR may carry the E2E key in the URL fragment
     load()
     const tick = () => {
       if (document.visibilityState === 'visible') load()

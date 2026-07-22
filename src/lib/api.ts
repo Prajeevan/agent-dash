@@ -2,7 +2,7 @@
 
 export interface QuestionState {
   status: 'pending' | 'answered' | 'expired'
-  answer: Record<string, unknown> | null
+  answer: Record<string, unknown> | string | null // string = ciphertext when enc
   timeout_at: number
 }
 
@@ -12,7 +12,8 @@ export interface EventItem {
   task_id: string | null
   kind: 'update' | 'question' | 'done' | 'error'
   title: string
-  blocks: unknown[]
+  blocks: unknown[] | string // string = ciphertext when enc
+  enc: boolean
   priority: number
   project: string | null
   task: string | null

@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Bell, BellOff } from 'lucide-react'
 import { api, AuthError } from '../lib/api'
 import { Header, Container, LockedScreen, Spinner } from '../lib/shell'
+import { getEncKey, setEncKey, clearEncKey, generateEncKey } from '../lib/e2e'
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
@@ -184,6 +185,10 @@ function SettingsPage() {
           </p>
         </Card>
 
+        <Card title="Encryption (E2E)">
+          <EncryptionCard />
+        </Card>
+
         <Card title="Clear inbox">
           <p style={{ color: 'var(--muted)', fontSize: '0.9rem', lineHeight: 1.6, margin: '0 0 1rem' }}>
             Tidy up or start fresh. Agents can also clear things themselves when it gets cluttered.
@@ -222,6 +227,62 @@ function TimeField({ label, minutes, onChange }: { label: string; minutes: numbe
         style={{ background: 'var(--bg-elev2)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem', color: 'var(--text)' }}
       />
     </label>
+  )
+}
+
+function EncryptionCard() {
+  const [key, setKey] = useState('')
+  const [saved, setSaved] = useState<string | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    setSaved(getEncKey())
+  }, [])
+
+  function save(k: string) {
+    const v = k.trim()
+    if (!v) return
+    setEncKey(v)
+    setSaved(v)
+    setKey('')
+    setMsg('Key saved on this device. Give the SAME key to your agent (CLI: --enc-key).')
+  }
+
+  return (
+    <div>
+      <p style={{ color: 'var(--muted)', fontSize: '0.9rem', lineHeight: 1.6, margin: '0 0 1rem' }}>
+        With a key set, message content is decrypted here on your device — the server only ever
+        stores ciphertext it can’t read. The key never leaves this device. Give the same key to
+        your agent so it can encrypt.
+      </p>
+      {saved ? (
+        <div style={{ marginBottom: '0.9rem' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: 'var(--success)', fontWeight: 600, fontSize: '0.9rem' }}>
+            🔒 Encryption on
+          </div>
+          <pre style={{ margin: '0.5rem 0 0', background: 'var(--bg-elev2)', padding: '0.6rem', borderRadius: '0.5rem', fontSize: '0.72rem', overflowX: 'auto', color: 'var(--muted)' }}>
+            <code>{saved}</code>
+          </pre>
+          <button onClick={() => { clearEncKey(); setSaved(null); setMsg('Encryption turned off on this device.') }} style={{ ...btn(false), marginTop: '0.7rem', color: 'var(--error)', borderColor: 'var(--error)' }}>
+            Turn off
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+          <input
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="Paste your encryption key"
+            style={{ background: 'var(--bg-elev2)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.6rem 0.7rem', color: 'var(--text)', fontSize: '0.85rem', fontFamily: 'monospace' }}
+          />
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <button onClick={() => save(key)} style={btn(true)}>Save key</button>
+            <button onClick={() => save(generateEncKey())} style={btn(false)}>Generate a new key</button>
+          </div>
+        </div>
+      )}
+      {msg ? <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginTop: '0.8rem' }}>{msg}</p> : null}
+    </div>
   )
 }
 

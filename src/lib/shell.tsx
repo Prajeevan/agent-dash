@@ -21,16 +21,44 @@ export function Header({
       }}
     >
       <div style={{ maxWidth: '46rem', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', textDecoration: 'none', color: 'var(--text)' }}>
-          <Logo />
-          <span style={{ fontWeight: 700, fontSize: '1.05rem', letterSpacing: '-0.01em' }}>Agent Dash</span>
-          {live ? (
-            <span className="live-dot" title="Live" style={{ width: '0.5rem', height: '0.5rem', borderRadius: '999px', background: 'var(--success)', marginLeft: '0.1rem' }} />
-          ) : null}
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0 }}>
+          <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', textDecoration: 'none', color: 'var(--text)' }}>
+            <Logo />
+            <span style={{ fontWeight: 700, fontSize: '1.05rem', letterSpacing: '-0.01em' }}>Agent Dash</span>
+            {live ? (
+              <span className="live-dot" title="Live" style={{ width: '0.5rem', height: '0.5rem', borderRadius: '999px', background: 'var(--success)', marginLeft: '0.1rem' }} />
+            ) : null}
+          </Link>
+          <ProButton />
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>{right}</div>
       </div>
     </header>
+  )
+}
+
+function ProButton() {
+  return (
+    <Link
+      to="/pro"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.25rem',
+        textDecoration: 'none',
+        fontSize: '0.72rem',
+        fontWeight: 700,
+        letterSpacing: '0.02em',
+        color: '#fff',
+        background: 'linear-gradient(135deg, var(--accent), #c78bff)',
+        padding: '0.22rem 0.6rem',
+        borderRadius: '999px',
+        boxShadow: '0 2px 10px -2px color-mix(in srgb, var(--accent) 60%, transparent)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      ✦ Pro
+    </Link>
   )
 }
 

@@ -49,7 +49,9 @@ async function maybePush(env: Env, event: EventRow): Promise<void> {
   if (event.priority < 2 && (await inQuietHours(env))) return
   await pushToAll(env, {
     title: event.project ? `${event.project}: ${event.title}` : event.title,
-    body: previewText(JSON.parse(event.blocks)),
+    // Encrypted events carry ciphertext blocks the server can't read — the
+    // notification stays generic; the app decrypts the detail on open.
+    body: event.enc ? '🔒 Encrypted — open to view' : previewText(JSON.parse(event.blocks)),
     tag: event.task_id || event.id,
     eventId: event.id,
     kind: event.kind,
@@ -79,6 +81,33 @@ interface EventRow {
   read_at: number | null
   expires_at: number
   project: string | null
+  enc: number
+}
+
+// Validate/normalize a blocks payload that may be plaintext (a JSON array we
+// zod-check) or an encrypted ciphertext string (opaque; stored as-is). Returns
+// the string to store + the enc flag, or an error Response.
+function normalizeBlocks(
+  body: Record<string, unknown>,
+  { allowInteractive }: { allowInteractive: boolean },
+): { blocks: string; enc: number } | Response {
+  if (body.enc === true) {
+    if (typeof body.blocks !== 'string' || !body.blocks) {
+      return json({ ok: false, error: 'Encrypted events must send blocks as a ciphertext string.' }, 400)
+    }
+    return { blocks: body.blocks, enc: 1 }
+  }
+  const parsed = BlocksSchema.safeParse(body.blocks ?? [])
+  if (!parsed.success) {
+    return json({ ok: false, error: 'Invalid blocks.', detail: parsed.error.issues.slice(0, 5) }, 400)
+  }
+  if (!allowInteractive && hasInteractive(parsed.data)) {
+    return json({ ok: false, error: 'Interactive blocks (buttons/form) are only valid on questions.' }, 400)
+  }
+  if (allowInteractive && !hasInteractive(parsed.data)) {
+    return json({ ok: false, error: 'A question needs at least one interactive block (buttons or form).' }, 400)
+  }
+  return { blocks: JSON.stringify(parsed.data), enc: 0 }
 }
 
 // ── Agent endpoints (bearer AGENT_KEY) ───────────────────────────────────────
@@ -129,28 +158,23 @@ export async function createEvent(request: Request, env: Env): Promise<Response>
 
   const priority = Math.max(0, Math.min(2, Number(body.priority ?? 0) | 0))
 
-  const parsed = BlocksSchema.safeParse(body.blocks ?? [])
-  if (!parsed.success) {
-    return json({ ok: false, error: 'Invalid blocks.', detail: parsed.error.issues.slice(0, 5) }, 400)
-  }
-  if (hasInteractive(parsed.data)) {
-    return json({ ok: false, error: 'Interactive blocks (buttons/form) are only valid on questions.' }, 400)
-  }
+  const norm = normalizeBlocks(body, { allowInteractive: false })
+  if (norm instanceof Response) return norm
 
   const meta = extractMeta(body)
   const id = ulid()
   const t = now()
   await env.DB.prepare(
-    `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at, project, task, model, tags)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11, ?12, ?13)`,
+    `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at, project, task, model, tags, enc)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`,
   )
-    .bind(id, agent, taskId, kind, title, JSON.stringify(parsed.data), priority, t, t + retentionMs(env), meta.project, meta.task, meta.model, meta.tags)
+    .bind(id, agent, taskId, kind, title, norm.blocks, priority, t, t + retentionMs(env), meta.project, meta.task, meta.model, meta.tags, norm.enc)
     .run()
 
   const event: EventRow = {
     id, agent, task_id: taskId, kind, title,
-    blocks: JSON.stringify(parsed.data), priority, created_at: t, read_at: null,
-    expires_at: t + retentionMs(env), project: meta.project,
+    blocks: norm.blocks, priority, created_at: t, read_at: null,
+    expires_at: t + retentionMs(env), project: meta.project, enc: norm.enc,
   }
   await maybePush(env, event)
   return json({ ok: true, id })
@@ -189,14 +213,13 @@ export async function updateEvent(id: string, request: Request, env: Env): Promi
 
   let blocksJson: string | null = null
   let blocks: Block[] | null = null
+  let encVal: number | null = null
   if (body.blocks != null) {
-    const parsed = BlocksSchema.safeParse(body.blocks)
-    if (!parsed.success) return json({ ok: false, error: 'Invalid blocks.' }, 400)
-    if (hasInteractive(parsed.data)) {
-      return json({ ok: false, error: 'Interactive blocks are only valid on questions.' }, 400)
-    }
-    blocks = parsed.data
-    blocksJson = JSON.stringify(parsed.data)
+    const norm = normalizeBlocks(body, { allowInteractive: false })
+    if (norm instanceof Response) return norm
+    blocksJson = norm.blocks
+    encVal = norm.enc
+    if (norm.enc === 0) blocks = JSON.parse(norm.blocks) as Block[]
   }
 
   // Only overwrite meta fields the caller actually sent (COALESCE on null).
@@ -217,17 +240,18 @@ export async function updateEvent(id: string, request: Request, env: Env): Promi
        task = COALESCE(?6, task),
        model = COALESCE(?7, model),
        tags = COALESCE(?8, tags),
-       updated_at = ?9,
+       enc = COALESCE(?9, enc),
+       updated_at = ?10,
        read_at = NULL
-     WHERE id = ?10`,
+     WHERE id = ?11`,
   )
-    .bind(title, kind, priority, blocksJson, project, task, model, tags, now(), id)
+    .bind(title, kind, priority, blocksJson, project, task, model, tags, encVal, now(), id)
     .run()
 
   if (body.notify === true) {
     await pushToAll(env, {
       title: title ?? 'Update',
-      body: blocks ? previewText(blocks) : 'Progress updated.',
+      body: encVal === 1 ? '🔒 Encrypted — open to view' : blocks ? previewText(blocks) : 'Progress updated.',
       tag: existing.task_id || id,
       eventId: id,
       kind: kind ?? existing.kind,
@@ -251,16 +275,10 @@ export async function createQuestion(request: Request, env: Env): Promise<Respon
   const agent = typeof body.agent === 'string' && body.agent.trim() ? body.agent.trim().slice(0, 120) : 'agent'
   const taskId = typeof body.task_id === 'string' ? body.task_id.trim().slice(0, 120) : null
 
-  const parsed = BlocksSchema.safeParse(body.blocks ?? [])
-  if (!parsed.success) {
-    return json({ ok: false, error: 'Invalid blocks.', detail: parsed.error.issues.slice(0, 5) }, 400)
-  }
-  if (!hasInteractive(parsed.data)) {
-    return json(
-      { ok: false, error: 'A question needs at least one interactive block (buttons or form).' },
-      400,
-    )
-  }
+  // Encrypted questions can't be validated server-side (the interactive block
+  // is inside the ciphertext) — we trust the agent and enforce shape client-side.
+  const norm = normalizeBlocks(body, { allowInteractive: true })
+  if (norm instanceof Response) return norm
 
   const timeoutMin = Math.max(1, Math.min(10_080, Number(body.timeout_minutes ?? 1440) | 0)) // default 24h, max 7d
   const meta = extractMeta(body)
@@ -270,9 +288,9 @@ export async function createQuestion(request: Request, env: Env): Promise<Respon
 
   const batch = [
     env.DB.prepare(
-      `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at, project, task, model, tags)
-       VALUES (?1, ?2, ?3, 'question', ?4, ?5, 2, ?6, ?6, ?7, ?8, ?9, ?10, ?11)`,
-    ).bind(id, agent, taskId, title, JSON.stringify(parsed.data), t, t + retentionMs(env), meta.project, meta.task, meta.model, meta.tags),
+      `INSERT INTO events (id, agent, task_id, kind, title, blocks, priority, created_at, updated_at, expires_at, project, task, model, tags, enc)
+       VALUES (?1, ?2, ?3, 'question', ?4, ?5, 2, ?6, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`,
+    ).bind(id, agent, taskId, title, norm.blocks, t, t + retentionMs(env), meta.project, meta.task, meta.model, meta.tags, norm.enc),
     env.DB.prepare(
       `INSERT INTO questions (event_id, status, timeout_at) VALUES (?1, 'pending', ?2)`,
     ).bind(id, timeoutAt),
@@ -281,8 +299,8 @@ export async function createQuestion(request: Request, env: Env): Promise<Respon
 
   const event: EventRow = {
     id, agent, task_id: taskId, kind: 'question', title,
-    blocks: JSON.stringify(parsed.data), priority: 2, created_at: t, read_at: null,
-    expires_at: t + retentionMs(env), project: meta.project,
+    blocks: norm.blocks, priority: 2, created_at: t, read_at: null,
+    expires_at: t + retentionMs(env), project: meta.project, enc: norm.enc,
   }
   await maybePush(env, event)
   return json({ ok: true, id, poll_url: `/api/v1/questions/${id}`, timeout_at: timeoutAt })
@@ -468,13 +486,23 @@ export async function getEvent(id: string, env: Env): Promise<Response> {
 }
 
 function hydrate(row: Record<string, unknown>): Record<string, unknown> {
+  const enc = Number(row.enc ?? 0) === 1
+  // Encrypted rows carry ciphertext strings the server can't parse — pass them
+  // through untouched; the client decrypts. Plaintext rows are JSON.
+  const blocks = enc ? (row.blocks as string) : JSON.parse((row.blocks as string) || '[]')
+  const answer = row.q_answer
+    ? enc
+      ? (row.q_answer as string)
+      : JSON.parse(row.q_answer as string)
+    : null
   return {
     id: row.id,
     agent: row.agent,
     task_id: row.task_id,
     kind: row.kind,
     title: row.title,
-    blocks: JSON.parse((row.blocks as string) || '[]'),
+    blocks,
+    enc,
     priority: row.priority,
     project: row.project ?? null,
     task: row.task ?? null,
@@ -485,11 +513,7 @@ function hydrate(row: Record<string, unknown>): Record<string, unknown> {
     read_at: row.read_at,
     question:
       row.q_status != null
-        ? {
-            status: row.q_status,
-            answer: row.q_answer ? JSON.parse(row.q_answer as string) : null,
-            timeout_at: row.q_timeout,
-          }
+        ? { status: row.q_status, answer, timeout_at: row.q_timeout }
         : null,
   }
 }
@@ -545,9 +569,9 @@ export async function clearEvents(
 // You answer a question in the UI. Validate the answer against the question's
 // own interactive blocks so a stale/garbage submit can't land.
 export async function answerQuestion(id: string, request: Request, env: Env): Promise<Response> {
-  const event = await env.DB.prepare('SELECT blocks FROM events WHERE id = ?1 AND kind = ?2')
+  const event = await env.DB.prepare('SELECT blocks, enc FROM events WHERE id = ?1 AND kind = ?2')
     .bind(id, 'question')
-    .first<{ blocks: string }>()
+    .first<{ blocks: string; enc: number }>()
   if (!event) return json({ ok: false, error: 'Unknown question.' }, 404)
 
   const q = await env.DB.prepare('SELECT status FROM questions WHERE event_id = ?1')
@@ -561,6 +585,23 @@ export async function answerQuestion(id: string, request: Request, env: Env): Pr
     submitted = (await request.json()) as Record<string, unknown>
   } catch {
     return json({ ok: false, error: 'Invalid JSON.' }, 400)
+  }
+
+  // Encrypted question: the answer arrives as a ciphertext string the server
+  // can't (and shouldn't) validate. Store it opaquely for the agent to decrypt.
+  if (event.enc === 1) {
+    if (submitted.enc !== true || typeof submitted.answer !== 'string' || !submitted.answer) {
+      return json({ ok: false, error: 'Encrypted questions need an encrypted answer.' }, 400)
+    }
+    await env.DB.prepare(
+      `UPDATE questions SET status = 'answered', answer = ?1, answered_at = ?2 WHERE event_id = ?3`,
+    )
+      .bind(submitted.answer, now(), id)
+      .run()
+    await env.DB.prepare('UPDATE events SET read_at = COALESCE(read_at, ?1) WHERE id = ?2')
+      .bind(now(), id)
+      .run()
+    return json({ ok: true })
   }
 
   const blocks = JSON.parse(event.blocks) as Block[]
