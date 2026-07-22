@@ -30,6 +30,8 @@ import {
   putSettings,
   getStats,
   getProjects,
+  getTasks,
+  getThread,
 } from './server/api'
 import { handleMcp } from './server/mcp'
 import { blockSchemaDoc, openApiDoc } from './server/docs'
@@ -107,6 +109,10 @@ export default {
 
       if (path === '/api/v1/feed' && method === 'GET') return getFeed(url, env)
       if (path === '/api/v1/projects' && method === 'GET') return getProjects(env)
+      if (path === '/api/v1/tasks' && method === 'GET')
+        return getTasks(url.searchParams.get('project') ?? '', env)
+      if (path === '/api/v1/thread' && method === 'GET')
+        return getThread(url.searchParams.get('project') ?? '', url.searchParams.get('key') ?? '', env)
       if (path === '/api/v1/stats' && method === 'GET') return getStats(env)
       if (path === '/api/v1/settings' && method === 'GET') return getSettings(env)
       if (path === '/api/v1/settings' && method === 'POST') return putSettings(request, env)

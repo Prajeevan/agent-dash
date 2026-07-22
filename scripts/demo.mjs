@@ -162,8 +162,47 @@ async function colors() {
   console.log('\nStill waiting.')
 }
 
+// Ask one question and block until it's answered (or expires). Returns the answer.
+async function askAndWait(payload) {
+  const q = await post('/api/v1/questions', payload)
+  console.log(`  asked: "${payload.title}" → answer on your phone`)
+  for (let i = 0; i < 120; i++) {
+    const r = await get(`/api/v1/questions/${q.id}`)
+    if (r.status === 'answered') return r.answer
+    if (r.status === 'expired') return null
+    process.stdout.write('.')
+    await sleep(i < 30 ? 10_000 : 30_000)
+  }
+  return null
+}
+
+// A whole feature build: several questions under ONE task_id, so they stack
+// into a single thread. Answer each on your phone and the next appears in the
+// same conversation.
+async function feature() {
+  const base = { agent: 'claude-code', model: 'claude-opus-4.8', project: 'Weather app', task: 'Adding children mode', task_id: 'feat-childmode' }
+  console.log('Kicking off the "children mode" feature (one thread)…')
+  await post('/api/v1/events', { ...base, title: 'Starting children mode', blocks: [{ type: 'markdown', text: 'A few decisions before I build it.' }] })
+
+  const a1 = await askAndWait({ ...base, title: 'Which color scheme?', blocks: [{ type: 'buttons', id: 'scheme', options: ['Sunshine', 'Ocean', 'Candy'] }] })
+  console.log('\n  → scheme:', a1?.scheme ?? '(no answer)')
+  const a2 = await askAndWait({ ...base, title: 'Font size for kids?', blocks: [{ type: 'buttons', id: 'size', options: ['Large', 'Extra large'] }] })
+  console.log('\n  → size:', a2?.size ?? '(no answer)')
+  const a3 = await askAndWait({ ...base, title: 'Include the animated mascot?', blocks: [{ type: 'buttons', id: 'mascot', options: ['Yes', 'No'] }] })
+  console.log('\n  → mascot:', a3?.mascot ?? '(no answer)')
+
+  await post('/api/v1/events', {
+    ...base, kind: 'done', priority: 1, title: 'Children mode built',
+    blocks: [{ type: 'callout', tone: 'success', text: 'Shipped with your choices.' }, { type: 'keyvalue', items: [
+      { k: 'Scheme', v: a1?.scheme ?? '—' }, { k: 'Font', v: a2?.size ?? '—' }, { k: 'Mascot', v: a3?.mascot ?? '—' },
+    ] }],
+  })
+  console.log('\nFeature thread complete.')
+}
+
 const cmd = process.argv[2]
 if (cmd === 'progress') await progress()
 else if (cmd === 'weather') await weather()
 else if (cmd === 'colors') await colors()
-else console.log('Usage: node scripts/demo.mjs [progress|weather|colors]')
+else if (cmd === 'feature') await feature()
+else console.log('Usage: node scripts/demo.mjs [progress|weather|colors|feature]')

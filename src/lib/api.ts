@@ -29,6 +29,31 @@ export interface ProjectRow {
   total: number
   unread: number
   pending: number
+  last_activity: number
+  models: string[]
+}
+
+export interface TaskSummary {
+  key: string
+  project: string
+  task: string | null
+  model: string | null
+  agent: string | null
+  count: number
+  unread: number
+  pending: boolean
+  pending_event_id: string | null
+  pending_question: string | null
+  latest_title: string
+  latest_kind: 'update' | 'question' | 'done' | 'error'
+  last_activity: number
+}
+
+export interface ThreadData {
+  key: string
+  project: string
+  task: string | null
+  events: EventItem[]
 }
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
@@ -54,6 +79,12 @@ export const api = {
     ),
   event: (id: string) => req<{ ok: boolean; event: EventItem }>(`/api/v1/event/${id}`),
   projects: () => req<{ ok: boolean; projects: ProjectRow[] }>('/api/v1/projects'),
+  tasks: (project: string) =>
+    req<{ ok: boolean; tasks: TaskSummary[] }>(`/api/v1/tasks?project=${encodeURIComponent(project)}`),
+  thread: (project: string, key: string) =>
+    req<{ ok: boolean; thread: ThreadData }>(
+      `/api/v1/thread?project=${encodeURIComponent(project)}&key=${encodeURIComponent(key)}`,
+    ),
   stats: () => req<{ ok: boolean; unread: number; pending_questions: number }>('/api/v1/stats'),
   markRead: (id: string) => req(`/api/v1/event/${id}/read`, { method: 'POST' }),
   markUnread: (id: string) => req(`/api/v1/event/${id}/unread`, { method: 'POST' }),

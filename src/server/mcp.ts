@@ -14,7 +14,7 @@ const TOOLS = [
   {
     name: 'notify',
     description:
-      'Push an update to the human. Use for milestones, not every step. ALWAYS include project (what you are working on) and model (which LLM you are) so the human can tell things apart at a glance. Set priority 2 for anything that should ring through quiet hours.',
+      'Push an update to the human. Use for milestones, not every step. ALWAYS pass: project (what you are working on), model (which LLM you are), and task_id — generate ONE stable task_id when you start a task and reuse it on EVERY notify/ask for that task, so all its messages thread together in one conversation instead of scattering into separate cards. Set priority 2 for anything that should ring through quiet hours.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -51,7 +51,7 @@ const TOOLS = [
   {
     name: 'ask',
     description:
-      'Ask the human a question and get an id to poll. Provide at least one interactive block: a "buttons" block for a choice, or a "form" block to collect fields. Include project/task/model so the card reads "Project: X · model · Current task: Y". Returns { id }. Then call wait_for_answer with that id.',
+      'Ask the human a question and get an id to poll. Provide at least one interactive block: a "buttons" block for a choice, or a "form" block to collect fields. ALWAYS pass project, model, task (the sub-task name), and — critically — the SAME task_id you use for this task\'s other calls, so a sequence of questions (Q1 → answer → Q2 → answer) stacks into one thread instead of separate cards. Returns { id }; then call wait_for_answer. Use ask for each DISTINCT step; use update (not ask) when a single status like a progress bar should change in place.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as EventIdRouteImport } from './routes/event.$id'
+import { Route as ProjectNameRouteImport } from './routes/project.$name'
+import { Route as ProjectNameTaskKeyRouteImport } from './routes/project.$name.task.$key'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +30,68 @@ const EventIdRoute = EventIdRouteImport.update({
   path: '/event/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProjectNameRoute = ProjectNameRouteImport.update({
+  id: '/project/$name',
+  path: '/project/$name',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectNameTaskKeyRoute = ProjectNameTaskKeyRouteImport.update({
+  id: '/task/$key',
+  path: '/task/$key',
+  getParentRoute: () => ProjectNameRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
   '/event/$id': typeof EventIdRoute
+  '/project/$name': typeof ProjectNameRouteWithChildren
+  '/project/$name/task/$key': typeof ProjectNameTaskKeyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
   '/event/$id': typeof EventIdRoute
+  '/project/$name': typeof ProjectNameRouteWithChildren
+  '/project/$name/task/$key': typeof ProjectNameTaskKeyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
   '/event/$id': typeof EventIdRoute
+  '/project/$name': typeof ProjectNameRouteWithChildren
+  '/project/$name/task/$key': typeof ProjectNameTaskKeyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/settings' | '/event/$id'
+  fullPaths:
+    | '/'
+    | '/settings'
+    | '/event/$id'
+    | '/project/$name'
+    | '/project/$name/task/$key'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/settings' | '/event/$id'
-  id: '__root__' | '/' | '/settings' | '/event/$id'
+  to:
+    | '/'
+    | '/settings'
+    | '/event/$id'
+    | '/project/$name'
+    | '/project/$name/task/$key'
+  id:
+    | '__root__'
+    | '/'
+    | '/settings'
+    | '/event/$id'
+    | '/project/$name'
+    | '/project/$name/task/$key'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SettingsRoute: typeof SettingsRoute
   EventIdRoute: typeof EventIdRoute
+  ProjectNameRoute: typeof ProjectNameRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -82,13 +117,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/project/$name': {
+      id: '/project/$name'
+      path: '/project/$name'
+      fullPath: '/project/$name'
+      preLoaderRoute: typeof ProjectNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/project/$name/task/$key': {
+      id: '/project/$name/task/$key'
+      path: '/task/$key'
+      fullPath: '/project/$name/task/$key'
+      preLoaderRoute: typeof ProjectNameTaskKeyRouteImport
+      parentRoute: typeof ProjectNameRoute
+    }
   }
 }
+
+interface ProjectNameRouteChildren {
+  ProjectNameTaskKeyRoute: typeof ProjectNameTaskKeyRoute
+}
+
+const ProjectNameRouteChildren: ProjectNameRouteChildren = {
+  ProjectNameTaskKeyRoute: ProjectNameTaskKeyRoute,
+}
+
+const ProjectNameRouteWithChildren = ProjectNameRoute._addFileChildren(
+  ProjectNameRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SettingsRoute: SettingsRoute,
   EventIdRoute: EventIdRoute,
+  ProjectNameRoute: ProjectNameRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -24,6 +24,28 @@ The human gives you two values. If you don't have them, ask for them once:
 
 Every request sends `Authorization: Bearer <AGENT_KEY>`.
 
+## Threading — the most important habit
+
+The human sees your work grouped as **Project → Task → conversation**. For that
+to work, on EVERY call include:
+
+- `project` — what you're building, e.g. `"Weather app"`.
+- `model` — which model you are, e.g. `"claude-opus-4.8"`, `"gpt-5"`.
+- `task` — the human-readable sub-task, e.g. `"Adding children mode"`.
+- **`task_id`** — a **stable id you generate once when you start a task and reuse
+  on every notify/ask for that task.** This is what threads a sequence of
+  questions into ONE conversation. Without a shared `task_id`, Q1/Q2/Q3 become
+  three separate cards — exactly the clutter to avoid.
+
+Example: building a feature that needs three decisions →
+`task_id: "feat-childmode"` on all of: the first update, question 1, question 2,
+question 3. They all appear inside one task thread; each new question shows up in
+the same place as you answer the previous one.
+
+Rule of thumb:
+- **`ask` / `notify` with the same `task_id`** → a new message in the thread (distinct steps).
+- **`update` (POST /events/:id)** → change ONE existing message in place (e.g. a progress bar moving 0→100). Don't post a new event for each %.
+
 ## 1. Send an update (notification)
 
 ```bash

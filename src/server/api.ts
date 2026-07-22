@@ -329,19 +329,111 @@ export async function getInbox(url: URL, env: Env): Promise<Response> {
   return json({ ok: true, events: results ?? [] })
 }
 
-// Distinct projects with unread + pending-question counts, for the filter bar.
+// Project cards for the landing page: which models are active, how many tasks
+// need action, last activity. Sorted so projects needing you float to the top.
 export async function getProjects(env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(
     `SELECT
        COALESCE(e.project, '') AS project,
        COUNT(*) AS total,
        SUM(CASE WHEN e.read_at IS NULL THEN 1 ELSE 0 END) AS unread,
-       SUM(CASE WHEN q.status = 'pending' THEN 1 ELSE 0 END) AS pending
+       SUM(CASE WHEN q.status = 'pending' THEN 1 ELSE 0 END) AS pending,
+       MAX(e.created_at) AS last_activity,
+       GROUP_CONCAT(DISTINCT e.model) AS models
      FROM events e LEFT JOIN questions q ON q.event_id = e.id
      GROUP BY COALESCE(e.project, '')
-     ORDER BY pending DESC, total DESC`,
-  ).all<{ project: string; total: number; unread: number; pending: number }>()
-  return json({ ok: true, projects: results ?? [] })
+     ORDER BY pending DESC, last_activity DESC`,
+  ).all<{ project: string; total: number; unread: number; pending: number; last_activity: number; models: string | null }>()
+  const projects = (results ?? []).map((r) => ({
+    project: r.project,
+    total: r.total,
+    unread: r.unread,
+    pending: r.pending,
+    last_activity: r.last_activity,
+    models: (r.models ?? '').split(',').filter(Boolean),
+  }))
+  return json({ ok: true, projects })
+}
+
+// The thread key: a stable task_id when the agent sent one, else the event's
+// own id (a singleton thread). NEVER the human `task` label — labels collide.
+const THREAD_KEY_SQL = `COALESCE(NULLIF(e.task_id, ''), e.id)`
+
+// Task threads within a project. Groups events by thread key in JS (small,
+// single-user data), summarizing each thread for the project view.
+export async function getTasks(project: string, env: Env): Promise<Response> {
+  const { results } = await env.DB.prepare(
+    `SELECT e.*, ${THREAD_KEY_SQL} AS thread_key,
+       q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout
+     FROM events e LEFT JOIN questions q ON q.event_id = e.id
+     WHERE COALESCE(e.project, '') = ?1
+     ORDER BY e.created_at ASC`,
+  )
+    .bind(project)
+    .all<Record<string, unknown>>()
+
+  const threads = new Map<string, any>()
+  for (const row of results ?? []) {
+    const key = String(row.thread_key)
+    let t = threads.get(key)
+    if (!t) {
+      t = {
+        key,
+        project,
+        task: null,
+        model: null,
+        agent: null,
+        count: 0,
+        unread: 0,
+        pending: false,
+        pending_event_id: null,
+        pending_question: null,
+        latest_title: '',
+        latest_kind: 'update',
+        last_activity: 0,
+      }
+      threads.set(key, t)
+    }
+    t.count++
+    if (row.task) t.task = row.task
+    if (row.model) t.model = row.model
+    if (row.agent) t.agent = row.agent
+    if (row.read_at == null) t.unread++
+    // Latest event (rows are ASC, so keep overwriting).
+    t.latest_title = row.title
+    t.latest_kind = row.kind
+    t.last_activity = Math.max(t.last_activity, Number(row.updated_at ?? row.created_at))
+    if (row.q_status === 'pending') {
+      t.pending = true
+      t.pending_event_id = row.id
+      t.pending_question = row.title // what is being asked, shown on the card
+    }
+  }
+
+  const list = [...threads.values()].sort((a, b) => {
+    if (a.pending !== b.pending) return a.pending ? -1 : 1
+    return b.last_activity - a.last_activity
+  })
+  return json({ ok: true, tasks: list })
+}
+
+// All events in one thread, oldest-first, so the thread view renders the
+// conversation with the active question (if any) at the bottom.
+export async function getThread(project: string, key: string, env: Env): Promise<Response> {
+  const { results } = await env.DB.prepare(
+    `SELECT e.*, q.status AS q_status, q.answer AS q_answer, q.timeout_at AS q_timeout
+     FROM events e LEFT JOIN questions q ON q.event_id = e.id
+     WHERE COALESCE(e.project, '') = ?1 AND ${THREAD_KEY_SQL} = ?2
+     ORDER BY e.created_at ASC`,
+  )
+    .bind(project, key)
+    .all()
+  const events = (results ?? []).map(hydrate)
+  if (events.length === 0) return json({ ok: false, error: 'Thread not found.' }, 404)
+  // Prefer the most recent non-empty task label as the thread title.
+  let task: unknown = null
+  for (const e of events) if ((e as Record<string, unknown>).task) task = (e as Record<string, unknown>).task
+  return json({ ok: true, thread: { key, project, task, events } })
 }
 
 // ── Dashboard endpoints (session cookie) ─────────────────────────────────────

@@ -1,174 +1,51 @@
 import { useEffect, useState } from 'react'
-import { createFileRoute, Link, useParams } from '@tanstack/react-router'
-import { ArrowLeft, Circle } from 'lucide-react'
-import { useNavigate } from '@tanstack/react-router'
-import { api, AuthError, timeAgo, type EventItem } from '../lib/api'
-import { Header, Container, LockedScreen, Spinner, Badge } from '../lib/shell'
-import { BlockRenderer, AnswerForm } from '../lib/blocks'
+import { createFileRoute, useParams, useNavigate, Link } from '@tanstack/react-router'
+import { api, AuthError } from '../lib/api'
+import { Container, LockedScreen, Spinner } from '../lib/shell'
+import { toParam } from '../lib/project'
 
+// Push notifications deep-link here (/event/:id). We resolve the event to its
+// thread and redirect, so a notification lands inside the task conversation.
 export const Route = createFileRoute('/event/$id')({
-  component: EventDetail,
+  component: EventRedirect,
   ssr: false,
 })
 
-function EventDetail() {
+function EventRedirect() {
   const { id } = useParams({ from: '/event/$id' })
   const navigate = useNavigate()
-  const [event, setEvent] = useState<EventItem | null>(null)
-  const [state, setState] = useState<'loading' | 'ok' | 'locked' | 'notfound'>('loading')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function load() {
-    try {
-      const res = await api.event(id)
-      if (!res.ok || !res.event) {
-        setState('notfound')
-        return
-      }
-      setEvent(res.event)
-      setState('ok')
-      if (res.event.read_at == null) api.markRead(id).catch(() => {})
-    } catch (e) {
-      if (e instanceof AuthError) setState('locked')
-    }
-  }
+  const [state, setState] = useState<'loading' | 'locked' | 'notfound'>('loading')
 
   useEffect(() => {
-    load()
+    ;(async () => {
+      try {
+        const res = await api.event(id)
+        if (!res.ok || !res.event) {
+          setState('notfound')
+          return
+        }
+        const e = res.event
+        const key = e.task_id && e.task_id.trim() ? e.task_id : e.id
+        navigate({
+          to: '/project/$name/task/$key',
+          params: { name: toParam(e.project ?? ''), key },
+          replace: true,
+        })
+      } catch (err) {
+        if (err instanceof AuthError) setState('locked')
+        else setState('notfound')
+      }
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  // Keep the detail fresh: a progress event may be updating in place, or a
-  // pending question may get answered/expired elsewhere. Poll while visible.
-  useEffect(() => {
-    const tick = () => {
-      if (document.visibilityState === 'visible') load()
-    }
-    const iv = setInterval(tick, 5000)
-    return () => clearInterval(iv)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
-
-  async function submit(answer: Record<string, unknown>) {
-    setSubmitting(true)
-    setError(null)
-    try {
-      const res = await api.answer(id, answer)
-      if (!res.ok) {
-        setError(res.error ?? 'Could not submit.')
-        setSubmitting(false)
-        return
-      }
-      await load()
-    } catch {
-      setError('Could not submit.')
-    }
-    setSubmitting(false)
-  }
-
-  if (state === 'loading') return <Spinner />
   if (state === 'locked') return <LockedScreen />
-  if (state === 'notfound' || !event)
+  if (state === 'notfound')
     return (
       <Container>
         <p style={{ color: 'var(--muted)', padding: '2rem 0' }}>This message no longer exists.</p>
-        <Link to="/">← Back to inbox</Link>
+        <Link to="/">← Back to projects</Link>
       </Container>
     )
-
-  const q = event.question
-  const isPendingQuestion = q?.status === 'pending'
-
-  return (
-    <>
-      <Header
-        right={
-          <>
-            <button
-              onClick={() => api.markUnread(id).then(() => navigate({ to: '/' }))}
-              title="Mark unread"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: 'var(--bg-elev2)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.4rem 0.6rem', color: 'var(--muted)', cursor: 'pointer', fontSize: '0.82rem' }}
-            >
-              <Circle size={13} /> Unread
-            </button>
-            <Link to="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
-              <ArrowLeft size={16} /> Inbox
-            </Link>
-          </>
-        }
-      />
-      <Container>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-          {event.project ? (
-            <span style={{ fontSize: '0.75rem', fontWeight: 650, color: 'var(--accent)', background: 'var(--accent-soft)', padding: '0.15rem 0.55rem', borderRadius: '999px' }}>
-              {event.project}
-            </span>
-          ) : null}
-          {event.model ? (
-            <span style={{ fontSize: '0.75rem', color: 'var(--muted)', border: '1px solid var(--border)', padding: '0.12rem 0.5rem', borderRadius: '999px' }}>
-              {event.model}
-            </span>
-          ) : null}
-          <Badge kind={event.kind} />
-          <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{event.agent}</span>
-          <span style={{ fontSize: '0.8rem', color: 'var(--muted)', marginLeft: 'auto' }}>{timeAgo(event.created_at)}</span>
-        </div>
-        {event.task ? (
-          <div style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.4rem' }}>
-            <span style={{ opacity: 0.7 }}>Current task:</span> {event.task}
-          </div>
-        ) : null}
-        <h1 style={{ fontSize: '1.35rem', lineHeight: 1.3, margin: '0 0 0.6rem' }}>{event.title}</h1>
-        {event.tags.length > 0 ? (
-          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '1.2rem' }}>
-            {event.tags.map((t) => (
-              <span key={t} style={{ fontSize: '0.72rem', color: 'var(--muted)', background: 'var(--bg-elev2)', padding: '0.12rem 0.5rem', borderRadius: '0.3rem' }}>
-                #{t}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <div style={{ marginBottom: '0.6rem' }} />
-        )}
-
-        <div style={{ background: 'var(--bg-elev)', border: '1px solid var(--border)', borderRadius: '0.9rem', padding: '1.1rem' }}>
-          <BlockRenderer blocks={event.blocks} />
-
-          {q && (
-            <div style={{ marginTop: '1.3rem', paddingTop: '1.3rem', borderTop: '1px solid var(--border)' }}>
-              {isPendingQuestion ? (
-                <>
-                  <AnswerForm blocks={event.blocks} disabled={submitting} onSubmit={submit} />
-                  {error ? <p style={{ color: 'var(--error)', fontSize: '0.85rem', marginTop: '0.8rem' }}>{error}</p> : null}
-                  <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '1rem' }}>
-                    The agent is polling for your answer and will continue as soon as you respond.
-                  </p>
-                </>
-              ) : q.status === 'answered' ? (
-                <AnsweredView answer={q.answer} />
-              ) : (
-                <div style={{ color: 'var(--warn)', fontSize: '0.9rem' }}>
-                  This question expired before it was answered. The agent will have proceeded with a default.
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </Container>
-    </>
-  )
-}
-
-function AnsweredView({ answer }: { answer: Record<string, unknown> | null }) {
-  return (
-    <div>
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: 'var(--success)', fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.8rem' }}>
-        ✓ Answered
-      </div>
-      <pre style={{ margin: 0, background: 'var(--bg-elev2)', padding: '0.8rem', borderRadius: '0.5rem', fontSize: '0.82rem', overflowX: 'auto', color: 'var(--muted)' }}>
-        <code>{JSON.stringify(answer, null, 2)}</code>
-      </pre>
-    </div>
-  )
+  return <Spinner />
 }
