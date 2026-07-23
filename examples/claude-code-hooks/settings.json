@@ -1,7 +1,7 @@
 {
-  "//": "Drop these hooks into your Claude Code settings.json (or .claude/settings.json).",
-  "//1": "First: chmod +x notify.sh, and export AGENT_DASH_URL and AGENT_KEY in your shell.",
-  "//2": "Adjust the path to notify.sh to wherever you put it.",
+  "//": "Drop these hooks into your Claude Code settings.json (~/.claude/settings.json or .claude/settings.json).",
+  "//1": "chmod +x notify.sh ask.sh, export AGENT_DASH_URL and AGENT_KEY, and fix the paths below.",
+  "//2": "ask.sh needs jq. Stop uses timeout 600 so it can poll for your phone answer.",
   "hooks": {
     "SessionStart": [
       {
@@ -13,22 +13,23 @@
         ]
       }
     ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/agent-dash/examples/claude-code-hooks/notify.sh 'Claude finished — ready for you' 1 done"
-          }
-        ]
-      }
-    ],
     "Notification": [
       {
         "hooks": [
           {
             "type": "command",
             "command": "~/agent-dash/examples/claude-code-hooks/notify.sh 'Claude needs your input' 2 update"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/agent-dash/examples/claude-code-hooks/ask.sh",
+            "timeout": 600
           }
         ]
       }
